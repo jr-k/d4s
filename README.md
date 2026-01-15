@@ -40,7 +40,11 @@ sudo mv d4s /usr/local/bin/
 go run cmd/d4s/main.go
 ```
 
-## 🍊 Mascotte
+## 🍊 Our Mascotte `Citrus`
+
+<div align="left" width="100%">
+    <img src="./docs/img/d4s-citrus.png" width="32" alt="" />
+</div>
 
 Meet **Citrus**, our vitamin-packed helper ensuring your containers stay fresh and healthy! 🍊
 
