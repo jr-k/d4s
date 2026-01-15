@@ -4,20 +4,38 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/jessym/d4s/internal/dao/common"
+	"github.com/jr-k/d4s/internal/dao/common"
 	"golang.org/x/net/context"
 )
+
+type CachedStats struct {
+	CPU string
+	Mem string
+	TS  time.Time
+}
 
 type Manager struct {
 	cli *client.Client
 	ctx context.Context
+	
+	statsCache map[string]CachedStats
+	statsMutex sync.RWMutex
+	updating   int32
 }
 
 func NewManager(cli *client.Client, ctx context.Context) *Manager {
-	return &Manager{cli: cli, ctx: ctx}
+	return &Manager{
+		cli: cli, 
+		ctx: ctx,
+		statsCache: make(map[string]CachedStats),
+	}
 }
 
 // Container Model
@@ -45,14 +63,68 @@ func (c Container) GetCells() []string {
 	return []string{id, c.Names, c.Image, c.Status, c.Age, c.Ports, c.CPU, c.Mem, c.Compose, c.Created}
 }
 
+func (m *Manager) updateStats(containers []types.Container) {
+	if !atomic.CompareAndSwapInt32(&m.updating, 0, 1) {
+		return
+	}
+	
+	// Create a detached operation, do not block caller
+	go func() {
+		defer atomic.StoreInt32(&m.updating, 0)
+		
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 5) // Limit concurrency
+
+		for _, c := range containers {
+			if c.State != "running" {
+				continue
+			}
+
+			wg.Add(1)
+			go func(id string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				statsResp, err := m.cli.ContainerStats(m.ctx, id, false)
+				if err != nil {
+					return
+				}
+				
+				cpuPct, mem, limit := common.CalculateContainerStats(statsResp.Body)
+				
+				cpuStr := fmt.Sprintf("%.1f%%", cpuPct)
+				memStr := ""
+				if limit > 0 {
+					memStr = fmt.Sprintf("%.1f%% ([#6272a4]%s[-])", float64(mem)/float64(limit)*100.0, common.FormatBytes(int64(mem)))
+				} else {
+					memStr = fmt.Sprintf("0%% ([#6272a4]%s[-])", common.FormatBytes(int64(mem)))
+				}
+
+				m.statsMutex.Lock()
+				m.statsCache[id] = CachedStats{
+					CPU: cpuStr,
+					Mem: memStr,
+					TS:  time.Now(),
+				}
+				m.statsMutex.Unlock()
+			}(c.ID)
+		}
+		wg.Wait()
+	}()
+}
+
 func (m *Manager) List() ([]common.Resource, error) {
 	list, err := m.cli.ContainerList(m.ctx, container.ListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
 
-	var res []common.Resource
-	for _, c := range list {
+	// Trigger async update
+	m.updateStats(list)
+
+	res := make([]common.Resource, len(list))
+	for i, c := range list {
 		name := ""
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
@@ -74,7 +146,24 @@ func (m *Manager) List() ([]common.Resource, error) {
 
 		status, age := common.ParseStatus(c.Status)
 
-		res = append(res, Container{
+		// Fetch Stats from Cache
+		cpuStr := "..."
+		memStr := "..."
+		
+		if c.State != "running" {
+			cpuStr = "-"
+			memStr = "-"
+		} else {
+			m.statsMutex.RLock()
+			if s, ok := m.statsCache[c.ID]; ok {
+				// Expire cache after 15 seconds if needed, but here we just use it
+				cpuStr = s.CPU
+				memStr = s.Mem
+			}
+			m.statsMutex.RUnlock()
+		}
+
+		res[i] = Container{
 			ID:          c.ID,
 			Names:       name,
 			Image:       c.Image,
@@ -85,9 +174,9 @@ func (m *Manager) List() ([]common.Resource, error) {
 			Created:     common.FormatTime(c.Created),
 			Compose:     compose,
 			ProjectName: projectName,
-			CPU:         "0%", // Mock until async stats implemented
-			Mem:         "0% ([#6272a4]0 B[-])", // Mock
-		})
+			CPU:         cpuStr,
+			Mem:         memStr,
+		}
 	}
 	return res, nil
 }

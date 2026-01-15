@@ -3,8 +3,8 @@ package header
 import (
 	"fmt"
 
-	"github.com/jessym/d4s/internal/dao"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 

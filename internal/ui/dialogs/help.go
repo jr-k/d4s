@@ -2,8 +2,8 @@ package dialogs
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 
@@ -16,7 +16,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 	rows := [][]string{
 		{"[#ffb86c::b]GLOBAL", ""},
 		{"[#5f87ff]:[-]             Command", "[#5f87ff]?[-]             Help"},
-		{"[#5f87ff]/[-]             Filter", "[#5f87ff]Esc[-]           Back/Clear"},
+		{"[#5f87ff]/[-]             Filter", "[#5f87ff]esc[-]           Back/Clear"},
 		{"[#5f87ff]c[-]             Copy", ""},
 		{"", ""},
 		{"[#ffb86c::b]DOCKER", ""},
@@ -28,8 +28,8 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{"[#5f87ff]:s[-]            Services", "[#5f87ff]:no[-]           Nodes"},
 		{"", ""},
 		{"[#ffb86c::b]NAVIGATION", ""},
-		{"[#5f87ff]Arrows[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]Enter[-], [#5f87ff]d[-]       Inspect"},
-		{"[#5f87ff]< >[-]           Sort Column", "[#5f87ff]+[-]             Toggle Order"},
+		{"[#5f87ff]←/→[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]enter[-]           Drill Down"},
+		{"[#5f87ff]shift ←/→[-]           Sort Column", "[#5f87ff]shift ↑/↓[-]          Toggle Order"},
 	}
 
 	for i, row := range rows {

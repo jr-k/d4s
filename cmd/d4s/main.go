@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jessym/d4s/internal/ui"
+	"github.com/jr-k/d4s/internal/ui"
 )
 
 func main() {

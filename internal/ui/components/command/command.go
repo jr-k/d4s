@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 
@@ -94,7 +94,7 @@ func NewCommandComponent(app common.AppController) *CommandComponent {
 		SetLabel("[#ffb86c::b]VIEW> [-:-:-]")
 	
 	c.SetBorder(true).
-		SetBorderColor(tcell.NewRGBColor(144, 238, 144)). // Light green
+		SetBorderColor(styles.ColorAccentAlt).
 		SetBackgroundColor(styles.ColorBg)
 	
 	c.SetApplication(app.GetTviewApp())

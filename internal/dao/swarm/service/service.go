@@ -9,7 +9,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
-	"github.com/jessym/d4s/internal/dao/common"
+	"github.com/jr-k/d4s/internal/dao/common"
 	"golang.org/x/net/context"
 )
 

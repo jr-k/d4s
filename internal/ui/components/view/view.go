@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/dao"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 
@@ -25,6 +25,14 @@ type ResourceView struct {
 	SelectedIDs map[string]bool
 	ActionStates map[string]string // ID -> Action Name (e.g. "Stopping")
 	Headers  []string // Stored for rendering
+	
+	// Optional Overrides
+	InputHandler func(event *tcell.EventKey) *tcell.EventKey
+	ShortcutsFunc func() []string
+	FetchFunc func(app common.AppController) ([]dao.Resource, error)
+	InspectFunc func(app common.AppController, id string)
+	RemoveFunc func(id string, force bool, app common.AppController) error
+	PruneFunc func(app common.AppController) error
 }
 
 func NewResourceView(app common.AppController, title string) *ResourceView {
@@ -171,21 +179,13 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 			}
 		}
 
-		if v.Title == styles.TitleContainers {
-			switch event.Rune() {
-			case 'e':
-				v.App.PerformEnv()
-				return nil
-			case 't':
-				v.App.PerformStats()
-				return nil
-			case 'v':
-				v.App.PerformContainerVolumes()
-				return nil
-			case 'n':
-				v.App.PerformContainerNetworks()
+		// Delegate to view specific input handler
+		if v.InputHandler != nil {
+			result := v.InputHandler(event)
+			if result == nil {
 				return nil
 			}
+			event = result
 		}
 
 		// Map Ctrl-D/U to PageDown/PageUp
@@ -195,11 +195,6 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 		case tcell.KeyCtrlU:
 			return tcell.NewEventKey(tcell.KeyPgUp, 0, tcell.ModNone)
 		case tcell.KeyEsc:
-			if len(v.SelectedIDs) > 0 {
-				v.SelectedIDs = make(map[string]bool)
-				app.RefreshCurrentView()
-				return nil
-			}
 			return event // Let App handle Esc (e.g. Back/Quit)
 		}
 
@@ -355,13 +350,13 @@ func (v *ResourceView) updateCursorStyle(cursorRow int) {
 	}
 
 	if isCursorAction {
-		// Cursor + Action (Orange Light BG, Orange Text)
-		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.NewRGBColor(80, 50, 30)).Foreground(styles.ColorLogo))
+		// Cursor + Action
+		//v.Table.SetSelectedStyle(tcell.StyleDefault.Background(styles.ColorBrown).Foreground(styles.ColorAccentAlt))
 	} else if isCursorSelected {
-		// Cursor + Selected (Pink Light BG, White Text)
-		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(styles.ColorMultiSelectBg).Foreground(tcell.ColorWhite))
+		// Cursor + Selected
+		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(styles.ColorMultiSelectBg).Foreground(styles.ColorBg))
 	} else {
-		// Normal Cursor (Hover) -> Bg White Transparent, Texte Blanc
+		// Normal Cursor (Hover)
 		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(styles.ColorSelectBg).Foreground(styles.ColorSelectFg))
 	}
 }
@@ -400,15 +395,15 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 				fmt.Sscanf(parts[1], "%d", &desired)
 				
 				if desired == 0 && running == 0 {
-					// 0/0 -> Orange (Stopped but intentional)
-					serviceStatusColor = styles.ColorLogo // Orange
+					// 0/0 -> (Stopped but intentional)
+					serviceStatusColor = styles.ColorStatusOrange // Orange
 					hasServiceStatus = true
 				} else if running < desired {
-					// X < Y -> Red (Not enough replicas)
+					// X < Y -> (Not enough replicas)
 					serviceStatusColor = styles.ColorStatusRed
 					hasServiceStatus = true
 				} else if running > desired {
-					// X > Y -> Violet (Too many replicas - scaling down or issue)
+					// X > Y -> (Too many replicas - scaling down or issue)
 					serviceStatusColor = tcell.ColorMediumPurple
 					hasServiceStatus = true
 				}
@@ -422,27 +417,27 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	
 	// Priority: Starting/Exiting > Action > Selected > Normal
 	if isStarting {
-		bgColor = styles.ColorActionStartingBg // Blue Background
-		fgColor = tcell.ColorWhite      // White Text
+		bgColor = styles.ColorStatusBlue
+		fgColor = styles.ColorStatusBlueDarkBg
 	} else if isExiting {
-		bgColor = styles.ColorExitingBg        // Red Background
-		fgColor = tcell.ColorWhite      // White Text
+		bgColor = styles.ColorStatusRed
+		fgColor = styles.ColorStatusRedDarkBg
 	} else if isAction {
 		actionStateLower := strings.ToLower(actionState)
 		if strings.Contains(actionStateLower, "stopping") && !strings.Contains(actionStateLower, "restarting") {
-			bgColor = styles.ColorActionStopping
-			fgColor = tcell.ColorWhite
+			bgColor = styles.ColorStatusRedDarkBg
+			fgColor = styles.ColorStatusRed
 		} else if strings.Contains(actionStateLower, "starting") && !strings.Contains(actionStateLower, "restarting") {
-			bgColor = styles.ColorActionStartingBg // Blue
-			fgColor = tcell.ColorWhite
+			bgColor = styles.ColorStatusBlueDarkBg
+			fgColor = styles.ColorStatusBlue
 		} else {
 			// Restarting or others -> Orange
-			bgColor = tcell.NewRGBColor(80, 50, 30) 
-			fgColor = styles.ColorLogo
+			bgColor = styles.ColorStatusOrangeDarkBg
+			fgColor = styles.ColorStatusOrange
 		}
 	} else if isSelected {
-		bgColor = styles.ColorMultiSelectBg // Pink Light/Dark BG
-		fgColor = styles.ColorAccent // Pink Strong Text
+		bgColor = styles.ColorBg
+		fgColor = styles.ColorMultiSelectFg
 	} else if hasServiceStatus {
 		// Apply Service Status Color to the whole row text if not selected/action
 		bgColor = styles.ColorBg
@@ -481,13 +476,13 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 			if isAction {
 				actionState := strings.ToLower(actionState)
 				if strings.Contains(actionState, "stopping") && !strings.Contains(actionState, "restarting") {
-					if !forceTheme { colColor = styles.ColorActionStopping } // Red
+					if !forceTheme { colColor = styles.ColorStatusRed } // Red
 					displayText = "🔴 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				} else if strings.Contains(actionState, "starting") && !strings.Contains(actionState, "restarting") {
-					if !forceTheme { colColor = styles.ColorActionStarting } // Blue
+					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
 					displayText = "🔵 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				} else {
-					if !forceTheme { colColor = styles.ColorLogo } // Orange
+					if !forceTheme { colColor = styles.ColorStatusOrange } // Orange
 					displayText = "🟠 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				}
 			} else {
@@ -501,13 +496,13 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 					if !forceTheme { colColor = styles.ColorStatusRed }
 					displayText = "🔴 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "unknown") {
-					if !forceTheme { colColor = styles.ColorLogo } // Orange
+					if !forceTheme { colColor = styles.ColorStatusOrange } // Orange
 					displayText = "🟠 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "exiting") {
-					if !forceTheme { colColor = styles.ColorExitingFg } // Red
+					if !forceTheme { colColor = styles.ColorStatusRed } // Red
 					displayText = "🔴 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "starting") {
-					if !forceTheme { colColor = styles.ColorActionStarting } // Blue
+					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
 					displayText = "🔵 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
 					if !forceTheme { colColor = styles.ColorStatusGreen }
@@ -520,7 +515,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 					if !forceTheme { colColor = styles.ColorStatusGray }
 					displayText = "⚫ " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "created") {
-					if !forceTheme { colColor = styles.ColorActionStarting } // Blue
+					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
 					displayText = "🔵 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "dead") || strings.Contains(lowerStatus, "error") {
 					if !forceTheme { colColor = styles.ColorStatusRed }
@@ -568,4 +563,34 @@ func (v *ResourceView) refreshStyles() {
 	for i, item := range v.Data {
 		v.updateRowStyle(i+1, item)
 	}
+}
+
+func (v *ResourceView) GetSelectedID() (string, error) {
+	row, _ := v.Table.GetSelection()
+	if row < 1 || row >= v.Table.GetRowCount() {
+		return "", fmt.Errorf("no selection")
+	}
+
+	dataIndex := row - 1
+	if dataIndex < 0 || dataIndex >= len(v.Data) {
+		return "", fmt.Errorf("invalid index")
+	}
+	
+	return v.Data[dataIndex].GetID(), nil
+}
+
+func (v *ResourceView) GetSelectedIDs() ([]string, error) {
+	if len(v.SelectedIDs) > 0 {
+		var ids []string
+		for id := range v.SelectedIDs {
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+	// Fallback to single selection
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return nil, err
+	}
+	return []string{id}, nil
 }

@@ -1,16 +1,13 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
 )
-
-// Resource is a generic interface for displayable items
-// Already defined in common.go but Go allows multiple files per package.
-// If common.go defines Resource, I don't need to redefine it here if they are in same package.
-// BUT, if I change package name to common, I must ensure common.go is also package common.
 
 func ShortenPath(path string) string {
 	home, err := os.UserHomeDir()
@@ -112,5 +109,66 @@ func FormatBytes(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func CalculateContainerStats(body io.ReadCloser) (float64, uint64, uint64) {
+	defer body.Close()
+	var v map[string]interface{}
+	if err := json.NewDecoder(body).Decode(&v); err != nil {
+		return 0, 0, 0
+	}
+
+	var cpuPercent float64
+	var memUsage, memLimit uint64
+
+	// CPU
+	if cpuStats, ok := v["cpu_stats"].(map[string]interface{}); ok {
+		// Try precpu_stats first, but it might be empty on first call with stream=false
+		preCPUStats, _ := v["precpu_stats"].(map[string]interface{})
+		
+		if cpuUsage, ok := cpuStats["cpu_usage"].(map[string]interface{}); ok {
+			var totalUsage, preTotalUsage, systemUsage, preSystemUsage float64
+			
+			if t, ok := cpuUsage["total_usage"].(float64); ok { totalUsage = t }
+			if t, ok := cpuStats["system_cpu_usage"].(float64); ok { systemUsage = t }
+			
+			if preCPUStats != nil {
+				if preCPUUsage, ok := preCPUStats["cpu_usage"].(map[string]interface{}); ok {
+					if t, ok := preCPUUsage["total_usage"].(float64); ok { preTotalUsage = t }
+				}
+				if t, ok := preCPUStats["system_cpu_usage"].(float64); ok { preSystemUsage = t }
+			}
+
+			// If we don't have previous stats, we can't calculate CPU usage correctly
+			// However, for the sake of showing SOMETHING, we might want to return 0.
+			
+			if systemUsage > 0.0 && totalUsage > 0.0 {
+				cpuDelta := totalUsage - preTotalUsage
+				systemDelta := systemUsage - preSystemUsage
+				
+				if systemDelta > 0.0 && cpuDelta > 0.0 {
+					if percpu, ok := cpuUsage["percpu_usage"].([]interface{}); ok && len(percpu) > 0 {
+						cpuPercent = (cpuDelta / systemDelta) * float64(len(percpu)) * 100.0
+					} else if onlineCpus, ok := cpuStats["online_cpus"].(float64); ok {
+						cpuPercent = (cpuDelta / systemDelta) * onlineCpus * 100.0
+					} else {
+						cpuPercent = (cpuDelta / systemDelta) * 100.0
+					}
+				}
+			}
+		}
+	}
+
+	// Mem
+	if memStats, ok := v["memory_stats"].(map[string]interface{}); ok {
+		if usage, ok := memStats["usage"].(float64); ok {
+			memUsage = uint64(usage)
+		}
+		if limit, ok := memStats["limit"].(float64); ok {
+			memLimit = uint64(limit)
+		}
+	}
+
+	return cpuPercent, memUsage, memLimit
 }
 

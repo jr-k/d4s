@@ -2,8 +2,8 @@ package dialogs
 
 import (
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 

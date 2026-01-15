@@ -5,8 +5,8 @@ import (
 	"io"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 
@@ -106,30 +106,8 @@ func (lv *LogView) startStreaming() {
 	lv.SetText("[yellow]Loading logs...\n")
 
 	go func() {
-		// This requires method on App to get logs?
-		// AppController doesn't have GetLogs directly exposed in the interface we defined.
-		// We should add it or access DAO.
-		// But AppController interface is in `common`.
-		// Let's assume we add accessors or methods to AppController.
-		// For now, let's say AppController exposes DAO client? Or we add GetLogs to interface.
-		// Let's add GetLogs to interface in common/common.go later.
-		// Using a direct cast for now or skipping?
-		// Wait, App struct has Docker *dao.DockerClient public field.
-		// If we cast AppController to *App (circular dependency) -> NO.
-		
-		// Solution: AppController must have GetContainerLogs
-		
 		var reader io.ReadCloser
 		var err error
-		
-		// Need a way to access DAO from AppController
-		// Or add GetLogs to AppController.
-		// Let's assume we added GetContainerLogs to AppController interface.
-		
-		// Problem: I can't easily change AppController here without re-editing common.go
-		// But I will update common.go later.
-		
-		// Stub for now
 		_ = reader
 		_ = err
 		return

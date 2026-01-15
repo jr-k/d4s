@@ -29,7 +29,7 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 Requirement: Go 1.21+
 
 ```bash
-git clone https://github.com/jessym/d4s.git
+git clone https://github.com/jr-k/d4s.git
 cd d4s
 go build -o d4s cmd/d4s/main.go
 sudo mv d4s /usr/local/bin/

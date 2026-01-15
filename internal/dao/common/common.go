@@ -97,45 +97,11 @@ func GetHostStatsWithUsage(cli *client.Client, ctx context.Context) (HostStats, 
 			continue
 		}
 		
-		var v map[string]interface{}
-		if err := json.NewDecoder(statsResp.Body).Decode(&v); err != nil {
-			statsResp.Body.Close()
-			continue
-		}
-		statsResp.Body.Close()
-		
-		// Extract CPU stats
-		if cpuStats, ok := v["cpu_stats"].(map[string]interface{}); ok {
-			if preCPUStats, ok := v["precpu_stats"].(map[string]interface{}); ok {
-				if cpuUsage, ok := cpuStats["cpu_usage"].(map[string]interface{}); ok {
-					if preCPUUsage, ok := preCPUStats["cpu_usage"].(map[string]interface{}); ok {
-						if totalUsage, ok := cpuUsage["total_usage"].(float64); ok {
-							if preTotalUsage, ok := preCPUUsage["total_usage"].(float64); ok {
-								if systemUsage, ok := cpuStats["system_cpu_usage"].(float64); ok {
-									if preSystemUsage, ok := preCPUStats["system_cpu_usage"].(float64); ok {
-										cpuDelta := totalUsage - preTotalUsage
-										systemDelta := systemUsage - preSystemUsage
-										if systemDelta > 0 && cpuDelta > 0 {
-											if percpu, ok := cpuUsage["percpu_usage"].([]interface{}); ok {
-												cpuPct := (cpuDelta / systemDelta) * float64(len(percpu)) * 100.0
-												totalCPU += cpuPct
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		// Extract memory stats
-		if memStats, ok := v["memory_stats"].(map[string]interface{}); ok {
-			if usage, ok := memStats["usage"].(float64); ok {
-				totalMem += uint64(usage)
-				validStats++
-			}
+		cpuPct, mem, _ := CalculateContainerStats(statsResp.Body)
+		totalCPU += cpuPct
+		if mem > 0 {
+			totalMem += mem
+			validStats++
 		}
 	}
 	

@@ -5,9 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jessym/d4s/internal/dao"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/dialogs"
+	"github.com/gdamore/tcell/v2"
+	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/inspect"
+	"github.com/jr-k/d4s/internal/ui/components/view"
+	"github.com/jr-k/d4s/internal/ui/dialogs"
 )
 
 var Headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS"}
@@ -45,6 +48,104 @@ func Fetch(app common.AppController) ([]dao.Resource, error) {
 	return services, nil
 }
 
+func GetShortcuts() []string {
+	return []string{
+		common.FormatSCHeader("l", "Logs"),
+		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("s", "Scale"),
+		common.FormatSCHeader("z", "No Replica"),
+		common.FormatSCHeader("Ctrl-d", "Delete"),
+	}
+}
+
+func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
+	app := v.App
+	
+	switch event.Rune() {
+	case 's':
+		ScaleAction(app, v)
+		return nil
+	case 'l':
+		Logs(app, v)
+		return nil
+	case 'z':
+		ScaleZero(app, v)
+		return nil
+	case 'd':
+		Describe(app, v)
+		return nil
+	}
+	
+	if event.Key() == tcell.KeyCtrlD {
+		DeleteAction(app, v)
+		return nil
+	}
+	
+	return event
+}
+
+func Logs(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil { return }
+	
+	// Open Logs view
+	app.OpenInspector(inspect.NewLogInspector(id, "service"))
+}
+
+func DeleteAction(app common.AppController, v *view.ResourceView) {
+	ids, err := v.GetSelectedIDs()
+	if err != nil { return }
+
+	dialogs.ShowConfirmation(app, "DELETE", fmt.Sprintf("%d services", len(ids)), func(force bool) {
+		simpleAction := func(id string) error {
+			return Remove(id, force, app)
+		}
+		app.PerformAction(simpleAction, "Deleting")
+	})
+}
+
+func ScaleAction(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil { return }
+	
+	currentReplicas := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		item := v.Data[row-1]
+		cells := item.GetCells()
+		if len(cells) > 4 {
+			currentReplicas = strings.TrimSpace(cells[4])
+		}
+	}
+	Scale(app, id, currentReplicas)
+}
+
+func ScaleZero(app common.AppController, v *view.ResourceView) {
+	ids, err := v.GetSelectedIDs()
+	if err != nil { return }
+	
+	msg := fmt.Sprintf("You are about to scale %d services to 0 replicas.\nThis will make them unavailable.\nAre you sure?", len(ids))
+	
+	dialogs.ShowConfirmation(app, "NO REPLICA", msg, func(force bool) {
+		scaleAction := func(id string) error {
+			return app.GetDocker().ScaleService(id, 0)
+		}
+		app.PerformAction(scaleAction, "Scaling to 0")
+	})
+}
+
+func Describe(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil { return }
+
+	content, err := app.GetDocker().Inspect("service", id)
+	if err != nil {
+		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
+		return
+	}
+	app.OpenInspector(inspect.NewTextInspector(id+" Describe", content, "json"))
+}
+
 func Remove(id string, force bool, app common.AppController) error {
 	return app.GetDocker().RemoveService(id)
 }
@@ -76,4 +177,3 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 		}()
 	})
 }
-

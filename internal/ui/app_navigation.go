@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 func (a *App) ActivateCmd(initial string) {
@@ -35,7 +35,7 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleServices)
 	case "no", "node", "nodes":
 		switchToRoot(styles.TitleNodes)
-	case "p", "compose", "projects":
+	case "p", "cp", "compose", "projects":
 		switchToRoot(styles.TitleCompose)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
@@ -55,8 +55,6 @@ func (a *App) SwitchTo(viewName string) {
 		go a.RefreshCurrentView()
 		a.updateHeader()
 		a.TviewApp.SetFocus(a.Pages) // Usually focus page, but actually table
-		// But in initUI we set focus to table on switch.
-		// Wait, SwitchToPage just changes visibility. We need to focus table.
 		if v, ok := a.Views[viewName]; ok {
 			a.TviewApp.SetFocus(v.Table)
 		}

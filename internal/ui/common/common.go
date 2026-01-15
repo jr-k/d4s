@@ -3,7 +3,7 @@ package common
 import (
 	"fmt"
 
-	"github.com/jessym/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/dao"
 	"github.com/rivo/tview"
 )
 
@@ -26,11 +26,9 @@ type AppController interface {
 	GetTviewApp() *tview.Application
 	GetDocker() *dao.DockerClient
 
-	// Actions (triggered by shortcuts)
-	PerformEnv()
-	PerformStats()
-	PerformContainerVolumes()
-	PerformContainerNetworks()
+	// Actions
+	PerformAction(action func(id string) error, actionName string)
+	InspectCurrentSelection()
 	
 	// State
 	GetActiveScope() *Scope
@@ -46,6 +44,10 @@ type AppController interface {
 	// Layout management
 	SetCmdLineVisible(visible bool)
 	UpdateShortcuts()
+
+	// Inspector Management
+	OpenInspector(inspector Inspector)
+	CloseInspector()
 }
 
 func FormatSCHeader(key, action string) string {

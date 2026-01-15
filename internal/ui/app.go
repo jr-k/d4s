@@ -2,20 +2,26 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"runtime/debug"
 
 	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/dao"
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/components/command"
-	"github.com/jessym/d4s/internal/ui/components/footer"
-	"github.com/jessym/d4s/internal/ui/components/header"
-	"github.com/jessym/d4s/internal/ui/components/view"
-	"github.com/jessym/d4s/internal/ui/dialogs"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/command"
+	"github.com/jr-k/d4s/internal/ui/components/footer"
+	"github.com/jr-k/d4s/internal/ui/components/header"
+	"github.com/jr-k/d4s/internal/ui/components/view"
+	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/views/compose"
+	"github.com/jr-k/d4s/internal/ui/views/containers"
+	"github.com/jr-k/d4s/internal/ui/views/images"
+	"github.com/jr-k/d4s/internal/ui/views/networks"
+	"github.com/jr-k/d4s/internal/ui/views/nodes"
+	"github.com/jr-k/d4s/internal/ui/views/services"
+	"github.com/jr-k/d4s/internal/ui/views/volumes"
 	"github.com/rivo/tview"
 )
 
@@ -36,8 +42,9 @@ type App struct {
 	Views map[string]*view.ResourceView
 	
 	// State
-	ActiveFilter  string
-	ActiveScope   *common.Scope
+	ActiveFilter    string
+	ActiveScope     *common.Scope
+	ActiveInspector common.Inspector
 }
 
 // Ensure App implements AppController interface
@@ -90,13 +97,85 @@ func (a *App) initUI() {
 	a.Header = header.NewHeaderComponent()
 	
 	// 2. Main Content
-	a.Views[styles.TitleContainers] = view.NewResourceView(a, styles.TitleContainers)
-	a.Views[styles.TitleImages] = view.NewResourceView(a, styles.TitleImages)
-	a.Views[styles.TitleVolumes] = view.NewResourceView(a, styles.TitleVolumes)
-	a.Views[styles.TitleNetworks] = view.NewResourceView(a, styles.TitleNetworks)
-	a.Views[styles.TitleServices] = view.NewResourceView(a, styles.TitleServices)
-	a.Views[styles.TitleNodes] = view.NewResourceView(a, styles.TitleNodes)
-	a.Views[styles.TitleCompose] = view.NewResourceView(a, styles.TitleCompose)
+	// Containers
+	vContainers := view.NewResourceView(a, styles.TitleContainers)
+	vContainers.ShortcutsFunc = containers.GetShortcuts
+	vContainers.FetchFunc = containers.Fetch
+	vContainers.RemoveFunc = containers.Remove
+	vContainers.Headers = containers.Headers
+	vContainers.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return containers.InputHandler(vContainers, event)
+	}
+	a.Views[styles.TitleContainers] = vContainers
+
+	// Images
+	vImages := view.NewResourceView(a, styles.TitleImages)
+	vImages.ShortcutsFunc = images.GetShortcuts
+	vImages.FetchFunc = images.Fetch
+	vImages.RemoveFunc = images.Remove
+	vImages.PruneFunc = images.Prune
+	vImages.Headers = images.Headers
+	vImages.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return images.InputHandler(vImages, event)
+	}
+	a.Views[styles.TitleImages] = vImages
+
+	// Volumes
+	vVolumes := view.NewResourceView(a, styles.TitleVolumes)
+	vVolumes.ShortcutsFunc = volumes.GetShortcuts
+	vVolumes.FetchFunc = volumes.Fetch
+	vVolumes.RemoveFunc = volumes.Remove
+	vVolumes.PruneFunc = volumes.Prune
+	vVolumes.Headers = volumes.Headers
+	vVolumes.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return volumes.InputHandler(vVolumes, event)
+	}
+	a.Views[styles.TitleVolumes] = vVolumes
+
+	// Networks
+	vNetworks := view.NewResourceView(a, styles.TitleNetworks)
+	vNetworks.ShortcutsFunc = networks.GetShortcuts
+	vNetworks.FetchFunc = networks.Fetch
+	vNetworks.RemoveFunc = networks.Remove
+	vNetworks.PruneFunc = networks.Prune
+	vNetworks.Headers = networks.Headers
+	vNetworks.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return networks.InputHandler(vNetworks, event)
+	}
+	a.Views[styles.TitleNetworks] = vNetworks
+
+	// Services
+	vServices := view.NewResourceView(a, styles.TitleServices)
+	vServices.ShortcutsFunc = services.GetShortcuts
+	vServices.FetchFunc = services.Fetch
+	vServices.RemoveFunc = services.Remove
+	vServices.Headers = services.Headers
+	vServices.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return services.InputHandler(vServices, event)
+	}
+	a.Views[styles.TitleServices] = vServices
+
+	// Nodes
+	vNodes := view.NewResourceView(a, styles.TitleNodes)
+	vNodes.ShortcutsFunc = nodes.GetShortcuts
+	vNodes.FetchFunc = nodes.Fetch
+	vNodes.RemoveFunc = nodes.Remove
+	vNodes.Headers = nodes.Headers
+	vNodes.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return nodes.InputHandler(vNodes, event)
+	}
+	a.Views[styles.TitleNodes] = vNodes
+
+	// Compose
+	vCompose := view.NewResourceView(a, styles.TitleCompose)
+	vCompose.ShortcutsFunc = compose.GetShortcuts
+	vCompose.FetchFunc = compose.Fetch
+	vCompose.InspectFunc = compose.Inspect
+	vCompose.Headers = compose.Headers
+	vCompose.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return compose.InputHandler(vCompose, event)
+	}
+	a.Views[styles.TitleCompose] = vCompose
 
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
@@ -127,22 +206,9 @@ func (a *App) initUI() {
 			return event
 		}
 		
-		// Helper to close modals if open
-		if a.Pages.HasPage("inspect") {
-			if event.Key() == tcell.KeyEsc {
-				a.Pages.RemovePage("inspect")
-				// Restore focus to active view
-				page, _ := a.Pages.GetFrontPage()
-				if view, ok := a.Views[page]; ok {
-					a.TviewApp.SetFocus(view.Table)
-				}
-				a.UpdateShortcuts() // Update shortcuts immediately
-				return nil
-			}
-			// Pass 'c' through to modal
-			if event.Rune() == 'c' {
-				return event
-			}
+		// Helper to route input to Active Inspector
+		if a.ActiveInspector != nil {
+			return a.ActiveInspector.InputHandler(event)
 		}
 
 	// Don't intercept global keys if an input modal is open
@@ -173,6 +239,16 @@ func (a *App) initUI() {
 		return event
 	}
 
+	// Delegate to Active View Input Handler
+	if view, ok := a.Views[frontPage]; ok {
+		if view.InputHandler != nil {
+			// If handler returns nil, event was handled
+			if ret := view.InputHandler(event); ret == nil {
+				return nil
+			}
+		}
+	}
+
 	switch event.Rune() {
 		case ':':
 			a.ActivateCmd(":")
@@ -183,108 +259,11 @@ func (a *App) initUI() {
 		case '?':
 			a.Pages.AddPage("help", a.Help, true, true)
 			return nil
-		case 'd':
-			a.InspectCurrentSelection()
-			return nil
-		case 'l':
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleContainers {
-				a.PerformLogs()
-			}
-			return nil
-		case 's':
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleContainers {
-				a.PerformShell()
-			} else if page == styles.TitleServices {
-				a.PerformScale()
-			}
-			return nil
-		case 'z': // No Replica
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleServices {
-				a.PerformScaleZero()
-			}
-			return nil
-		case 'a': // Contextual Add (Create)
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleVolumes {
-				a.PerformCreateVolume()
-				return nil
-			}
-			if page == styles.TitleNetworks {
-				a.PerformCreateNetwork()
-				return nil
-			}
-			return nil
 		case 'c': // Global Copy
 			a.PerformCopy()
 			return nil
-		case 'o': // Open Volume
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleVolumes {
-				a.PerformOpenVolume()
-				return nil
-			}
-			return nil
-		case 'r': // Restart / Start
-			// Only Containers
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleContainers {
-				// Check status to decide Start or Restart
-				view, ok := a.Views[page]
-				if ok {
-					// Check status from data
-					row, _ := view.Table.GetSelection()
-					if row > 0 && row <= len(view.Data) {
-						item := view.Data[row-1]
-						if c, ok := item.(dao.Container); ok {
-							// If Exited or Created -> Start
-							lowerStatus := strings.ToLower(c.Status)
-							if strings.Contains(lowerStatus, "exited") || strings.Contains(lowerStatus, "created") {
-								a.PerformAction(func(id string) error {
-									return a.Docker.StartContainer(id)
-								}, "Starting")
-								return nil
-							}
-						}
-					}
-				}
-				
-				// Default to Restart
-				a.PerformAction(func(id string) error {
-					return a.Docker.RestartContainer(id)
-				}, "Restarting")
-			} else if page == styles.TitleCompose {
-				a.PerformAction(func(id string) error {
-					return a.Docker.RestartComposeProject(id)
-				}, "Restarting Project")
-			}
-			return nil
-		case 'x': // Stop
-			// Only Containers
-			page, _ := a.Pages.GetFrontPage()
-			if page == styles.TitleContainers {
-				a.PerformAction(func(id string) error {
-					return a.Docker.StopContainer(id)
-				}, "Stopping")
-			} else if page == styles.TitleCompose {
-				a.PerformAction(func(id string) error {
-					return a.Docker.StopComposeProject(id)
-				}, "Stopping Project")
-			}
-			return nil
-		case 'p': // Prune
-			a.PerformPrune()
-			return nil
 		}
 		
-		// Ctrl+D for Delete
-		if event.Key() == tcell.KeyCtrlD {
-			a.PerformDelete()
-			return nil
-		}
-
 		return event
 	})
 
@@ -347,4 +326,31 @@ func (a *App) SetCmdLineVisible(visible bool) {
 	}
 	// Important: Set proportion to 0 when hidden, otherwise it takes relative space
 	a.Layout.ResizeItem(a.CmdLine.View, size, 0)
+}
+
+func (a *App) OpenInspector(inspector common.Inspector) {
+	if a.ActiveInspector != nil {
+		a.CloseInspector()
+	}
+	
+	a.ActiveInspector = inspector
+	inspector.OnMount(a)
+	
+	a.Pages.AddPage("inspect", inspector.GetPrimitive(), true, true)
+	a.TviewApp.SetFocus(inspector.GetPrimitive())
+	a.UpdateShortcuts()
+}
+
+func (a *App) CloseInspector() {
+	if a.ActiveInspector != nil {
+		a.ActiveInspector.OnUnmount()
+		a.ActiveInspector = nil
+	}
+	
+	if a.Pages.HasPage("inspect") {
+		a.Pages.RemovePage("inspect")
+	}
+	
+	a.RestoreFocus()
+	a.UpdateShortcuts()
 }

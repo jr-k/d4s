@@ -7,16 +7,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/jessym/d4s/internal/ui/common"
-	"github.com/jessym/d4s/internal/ui/components/view"
-	"github.com/jessym/d4s/internal/ui/dialogs"
-	"github.com/jessym/d4s/internal/ui/styles"
-	"github.com/jessym/d4s/internal/ui/views/containers"
-	"github.com/jessym/d4s/internal/ui/views/images"
-	"github.com/jessym/d4s/internal/ui/views/networks"
-	"github.com/jessym/d4s/internal/ui/views/nodes"
-	"github.com/jessym/d4s/internal/ui/views/services"
-	"github.com/jessym/d4s/internal/ui/views/volumes"
+	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/view"
+	"github.com/jr-k/d4s/internal/ui/dialogs"
 )
 
 func (a *App) PerformAction(action func(id string) error, actionName string) {
@@ -98,39 +91,14 @@ func (a *App) getSelectedID(v *view.ResourceView) (string, error) {
 
 func (a *App) PerformDelete() {
 	page, _ := a.Pages.GetFrontPage()
-	var action func(id string, force bool) error
+	view, ok := a.Views[page]
 	
-	switch page {
-	case styles.TitleContainers:
-		action = func(id string, force bool) error {
-			return containers.Remove(id, force, a)
-		}
-	case styles.TitleImages:
-		action = func(id string, force bool) error {
-			return images.Remove(id, force, a)
-		}
-	case styles.TitleVolumes:
-		action = func(id string, force bool) error {
-			return volumes.Remove(id, force, a)
-		}
-	case styles.TitleNetworks:
-		action = func(id string, force bool) error {
-			return networks.Remove(id, force, a)
-		}
-	case styles.TitleServices:
-		action = func(id string, force bool) error {
-			return services.Remove(id, force, a)
-		}
-	case styles.TitleNodes:
-		action = func(id string, force bool) error {
-			return nodes.Remove(id, force, a)
-		}
-	default:
+	if !ok || view.RemoveFunc == nil {
 		return
 	}
 	
-	view, ok := a.Views[page]
-	if !ok { return }
+	action := view.RemoveFunc
+
 	
 	ids, err := a.getTargetIDs(view)
 	if err != nil { return }
@@ -153,7 +121,7 @@ func (a *App) PerformDelete() {
 
 	dialogs.ShowConfirmation(a, "DELETE", label, func(force bool) {
 		simpleAction := func(id string) error {
-			return action(id, force)
+			return action(id, force, a)
 		}
 		a.PerformAction(simpleAction, "Deleting")
 	})
@@ -162,23 +130,17 @@ func (a *App) PerformDelete() {
 
 func (a *App) PerformPrune() {
 	page, _ := a.Pages.GetFrontPage()
-	var action func(common.AppController) error
-	var name string
-
-	switch page {
-	case styles.TitleImages:
-		action = images.Prune
-		name = "Images"
-	case styles.TitleVolumes:
-		action = volumes.Prune
-		name = "Volumes"
-	case styles.TitleNetworks:
-		action = networks.Prune
-		name = "Networks"
-	default:
+	view, ok := a.Views[page]
+	
+	if !ok || view.PruneFunc == nil {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Prune not available for %s", page))
 		return
 	}
+	
+	action := view.PruneFunc
+	// Capitalize page name for display (e.g. "images" -> "Images")
+	name := strings.Title(page)
+
 
 	dialogs.ShowConfirmation(a, "PRUNE", name, func(force bool) {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Pruning %s...", name))
@@ -254,189 +216,15 @@ func (a *App) CopyToClipboard(text string) error {
 	return cmd.Run()
 }
 
-func (a *App) PerformEnv() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
 
-	env, err := a.Docker.GetContainerEnv(id)
-	if err != nil {
-		a.Flash.SetText(fmt.Sprintf("[red]Env Error: %v", err))
-		return
-	}
 
-	var colored []string
-	for _, line := range env {
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			colored = append(colored, fmt.Sprintf("[#8be9fd]%s[white]=[#50fa7b]%s", parts[0], parts[1]))
-		} else {
-			colored = append(colored, line)
-		}
-	}
-	
-	dialogs.ShowTextView(a, " Environment ", strings.Join(colored, "\n"))
-	a.UpdateShortcuts()
-}
 
-func (a *App) PerformStats() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
 
-	a.Flash.SetText(fmt.Sprintf("[yellow]Fetching stats for %s...", id))
-	go func() {
-		stats, err := a.Docker.GetContainerStats(id)
-		a.TviewApp.QueueUpdateDraw(func() {
-			if err != nil {
-				a.Flash.SetText(fmt.Sprintf("[red]Stats Error: %v", err))
-			} else {
-				a.Flash.SetText("")
-				colored := strings.ReplaceAll(stats, "\"", "[#f1fa8c]\"")
-				colored = strings.ReplaceAll(colored, ": ", ": [#50fa7b]")
-				dialogs.ShowTextView(a, " Stats ", colored)
-				a.UpdateShortcuts()
-			}
-		})
-	}()
-}
 
-func (a *App) PerformContainerVolumes() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
 
-	content, err := a.Docker.Inspect("container", id)
-	if err != nil {
-		a.Flash.SetText(fmt.Sprintf("[red]Inspect Error: %v", err))
-		return
-	}
-	dialogs.ShowInspectModal(a, "Volumes (JSON)", content)
-	a.UpdateShortcuts()
-}
 
-func (a *App) PerformContainerNetworks() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
 
-	content, err := a.Docker.Inspect("container", id)
-	if err != nil {
-		a.Flash.SetText(fmt.Sprintf("[red]Inspect Error: %v", err))
-		return
-	}
-	dialogs.ShowInspectModal(a, "Networks (JSON)", content)
-	a.UpdateShortcuts()
-}
 
-func (a *App) PerformCreateVolume() {
-	volumes.Create(a)
-	a.UpdateShortcuts()
-}
 
-func (a *App) PerformCreateNetwork() {
-	networks.Create(a)
-	a.UpdateShortcuts()
-}
 
-func (a *App) PerformOpenVolume() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	
-	row, _ := view.Table.GetSelection()
-	if row < 1 || row >= len(view.Data)+1 { return }
-	
-	dataIdx := row - 1
-	res := view.Data[dataIdx]
-	
-	volumes.Open(a, res)
-	a.UpdateShortcuts()
-}
-
-func (a *App) PerformScale() {
-	page, _ := a.Pages.GetFrontPage()
-	if page != styles.TitleServices { return }
-	
-	view, ok := a.Views[page]
-	if !ok { return }
-	
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
-    
-	currentReplicas := ""
-	row, _ := view.Table.GetSelection()
-	if row > 0 && row <= len(view.Data) {
-		item := view.Data[row-1]
-		cells := item.GetCells()
-		if len(cells) > 4 {
-			currentReplicas = strings.TrimSpace(cells[4])
-		}
-	}
-
-	services.Scale(a, id, currentReplicas)
-	a.UpdateShortcuts()
-}
-
-func (a *App) PerformScaleZero() {
-	page, _ := a.Pages.GetFrontPage()
-	if page != styles.TitleServices { return }
-	
-	view, ok := a.Views[page]
-	if !ok { return }
-	
-	ids, err := a.getTargetIDs(view)
-	if err != nil { return }
-	
-	// Confirmation
-	msg := fmt.Sprintf("You are about to scale %d services to 0 replicas.\nThis will make them unavailable.\nAre you sure?", len(ids))
-	
-	dialogs.ShowConfirmation(a, "NO REPLICA", msg, func(force bool) {
-		scaleAction := func(id string) error {
-			return a.Docker.ScaleService(id, 0)
-		}
-		a.PerformAction(scaleAction, "Scaling to 0")
-	})
-	a.UpdateShortcuts()
-}
-
-func (a *App) PerformShell() {
-	page, _ := a.Pages.GetFrontPage()
-	view, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(view)
-	if err != nil { return }
-
-	if page == styles.TitleContainers {
-		containers.Shell(a, id)
-	}
-	a.UpdateShortcuts()
-}
-
-func (a *App) PerformLogs() {
-	page, _ := a.Pages.GetFrontPage()
-	resourceView, ok := a.Views[page]
-	if !ok { return }
-	id, err := a.getSelectedID(resourceView)
-	if err != nil { return }
-
-	resourceType := "container"
-	if page == styles.TitleServices {
-		resourceType = "service"
-	}
-
-	logView := view.NewLogView(a, id, resourceType)
-	a.Pages.AddPage("logs", logView, true, true)
-	a.TviewApp.SetFocus(logView)
-
-	a.UpdateShortcuts()
-}
 

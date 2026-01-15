@@ -1,8 +1,7 @@
 package footer
 
 import (
-	"github.com/gdamore/tcell/v2"
-	"github.com/jessym/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
 
@@ -26,7 +25,7 @@ type FlashComponent struct {
 
 func NewFlashComponent() *FlashComponent {
 	f := tview.NewTextView()
-	f.SetDynamicColors(true).SetTextColor(tcell.NewRGBColor(95, 135, 255)).SetBackgroundColor(styles.ColorBg) // Royal Blueish
+	f.SetDynamicColors(true).SetTextColor(styles.ColorFlashFg).SetBackgroundColor(styles.ColorFlashBg) // Royal Blueish
 	return &FlashComponent{View: f}
 }
 

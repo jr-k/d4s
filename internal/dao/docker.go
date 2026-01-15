@@ -6,14 +6,14 @@ import (
 
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
-	"github.com/jessym/d4s/internal/dao/common"
-	"github.com/jessym/d4s/internal/dao/compose"
-	"github.com/jessym/d4s/internal/dao/docker/container"
-	"github.com/jessym/d4s/internal/dao/docker/image"
-	"github.com/jessym/d4s/internal/dao/docker/network"
-	"github.com/jessym/d4s/internal/dao/docker/volume"
-	"github.com/jessym/d4s/internal/dao/swarm/node"
-	"github.com/jessym/d4s/internal/dao/swarm/service"
+	"github.com/jr-k/d4s/internal/dao/common"
+	"github.com/jr-k/d4s/internal/dao/compose"
+	"github.com/jr-k/d4s/internal/dao/docker/container"
+	"github.com/jr-k/d4s/internal/dao/docker/image"
+	"github.com/jr-k/d4s/internal/dao/docker/network"
+	"github.com/jr-k/d4s/internal/dao/docker/volume"
+	"github.com/jr-k/d4s/internal/dao/swarm/node"
+	"github.com/jr-k/d4s/internal/dao/swarm/service"
 )
 
 // Re-export types for backward compatibility / convenience
@@ -60,10 +60,6 @@ func NewDockerClient() (*DockerClient, error) {
 		Compose:   compose.NewManager(cli, ctx),
 	}, nil
 }
-
-// Wrapper methods for backward compatibility with UI layer which calls d.ListContainers() etc directly.
-// In a full refactor, UI should use d.Container.List().
-// But for now, to keep changes minimal in UI, we can wrap.
 
 func (d *DockerClient) ListContainers() ([]common.Resource, error) {
 	return d.Container.List()
