@@ -62,6 +62,18 @@ func (c Container) GetCells() []string {
 	return []string{id, c.Names, c.Image, c.Status, c.Ports, c.CPU, c.Mem, c.Compose, c.Created}
 }
 
+// ComposeProject Model
+type ComposeProject struct {
+	Name        string
+	Status      string
+	ConfigFiles string
+}
+
+func (cp ComposeProject) GetID() string { return cp.Name }
+func (cp ComposeProject) GetCells() []string {
+	return []string{cp.Name, cp.Status, cp.ConfigFiles}
+}
+
 // Image Model
 type Image struct {
 	ID      string
@@ -193,6 +205,52 @@ func (d *DockerClient) ListContainers() ([]Resource, error) {
 			Compose: compose,
 			CPU:     "0%", // Mock until async stats implemented
 			Mem:     "0% ([#6272a4]0 B[-])", // Mock
+		})
+	}
+	return res, nil
+}
+
+func (d *DockerClient) ListComposeProjects() ([]Resource, error) {
+	list, err := d.cli.ContainerList(d.ctx, container.ListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+
+	type projData struct {
+		total   int
+		running int
+		config  string
+	}
+	projects := make(map[string]*projData)
+
+	for _, c := range list {
+		proj := c.Labels["com.docker.compose.project"]
+		if proj == "" {
+			continue
+		}
+
+		if _, ok := projects[proj]; !ok {
+			config := ""
+			if cf, ok := c.Labels["com.docker.compose.project.config_files"]; ok {
+				config = shortenPath(cf)
+			}
+			projects[proj] = &projData{
+				config: config,
+			}
+		}
+
+		projects[proj].total++
+		if c.State == "running" {
+			projects[proj].running++
+		}
+	}
+
+	var res []Resource
+	for name, data := range projects {
+		res = append(res, ComposeProject{
+			Name:        name,
+			Status:      fmt.Sprintf("Running (%d/%d)", data.running, data.total),
+			ConfigFiles: data.config,
 		})
 	}
 	return res, nil
@@ -361,8 +419,8 @@ func (d *DockerClient) RestartContainer(id string) error {
 	return d.cli.ContainerRestart(d.ctx, id, container.StopOptions{Timeout: &timeout})
 }
 
-func (d *DockerClient) RemoveContainer(id string) error {
-	return d.cli.ContainerRemove(d.ctx, id, container.RemoveOptions{Force: true})
+func (d *DockerClient) RemoveContainer(id string, force bool) error {
+	return d.cli.ContainerRemove(d.ctx, id, container.RemoveOptions{Force: force})
 }
 
 func (d *DockerClient) GetContainerLogs(id string, timestamps bool) (io.ReadCloser, error) {
@@ -387,6 +445,38 @@ func (d *DockerClient) GetServiceLogs(id string, timestamps bool) (io.ReadCloser
 	return d.cli.ServiceLogs(d.ctx, id, opts)
 }
 
+func (d *DockerClient) GetContainerEnv(id string) ([]string, error) {
+	c, err := d.cli.ContainerInspect(d.ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return c.Config.Env, nil
+}
+
+func (d *DockerClient) GetContainerStats(id string) (string, error) {
+	resp, err := d.cli.ContainerStats(d.ctx, id, false)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var v interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	
+	// Pretty print the JSON stats for now as requested by user ("t for docker stats")
+	// For better UX, we could parse into struct and display table, 
+	// but user asked for "syntax coloring" on stats which often implies JSON or code view.
+	// Actually, "syntax coloring" might mean styled table. 
+	// But let's stick to JSON dump for accuracy first, or simple formatted string.
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func (d *DockerClient) HasTTY(id string) (bool, error) {
 	c, err := d.cli.ContainerInspect(d.ctx, id)
 	if err != nil {
@@ -396,8 +486,8 @@ func (d *DockerClient) HasTTY(id string) (bool, error) {
 }
 
 // Image Actions
-func (d *DockerClient) RemoveImage(id string) error {
-	_, err := d.cli.ImageRemove(d.ctx, id, image.RemoveOptions{Force: true, PruneChildren: true})
+func (d *DockerClient) RemoveImage(id string, force bool) error {
+	_, err := d.cli.ImageRemove(d.ctx, id, image.RemoveOptions{Force: force, PruneChildren: true})
 	return err
 }
 
@@ -414,8 +504,8 @@ func (d *DockerClient) CreateVolume(name string) error {
 	return err
 }
 
-func (d *DockerClient) RemoveVolume(id string) error {
-	return d.cli.VolumeRemove(d.ctx, id, true)
+func (d *DockerClient) RemoveVolume(id string, force bool) error {
+	return d.cli.VolumeRemove(d.ctx, id, force)
 }
 
 func (d *DockerClient) PruneVolumes() error {
@@ -460,9 +550,9 @@ func (d *DockerClient) RemoveService(id string) error {
 	return d.cli.ServiceRemove(d.ctx, id)
 }
 
-func (d *DockerClient) RemoveNode(id string) error {
+func (d *DockerClient) RemoveNode(id string, force bool) error {
 	// Force remove
-	return d.cli.NodeRemove(d.ctx, id, swarm.NodeRemoveOptions{Force: true})
+	return d.cli.NodeRemove(d.ctx, id, swarm.NodeRemoveOptions{Force: force})
 }
 
 // Helpers

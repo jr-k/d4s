@@ -16,7 +16,8 @@ type ResourceView struct {
 	App      *App
 	Title    string
 	Data     []dao.Resource
-	Filter   string
+	Filter   string // User Filter (via /)
+	BaseFilter string // Mandatory Filter (Drill-down)
 	SortCol  int
 	SortAsc  bool
 	ColCount int // To avoid out of bound when switching views
@@ -113,6 +114,34 @@ func NewResourceView(app *App, title string) *ResourceView {
 			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 		}
 		
+		// Context specific shortcuts
+		if v.Title == TitleCompose && event.Key() == tcell.KeyEnter {
+			row, _ := tv.GetSelection()
+			if row > 0 && row <= len(v.Data) {
+				projName := v.Data[row-1].GetID()
+				// Drill Down
+				v.App.DrillDown(TitleContainers, projName, "Compose: "+projName)
+				return nil
+			}
+		}
+
+		if v.Title == TitleContainers {
+			switch event.Rune() {
+			case 'e':
+				v.App.PerformEnv()
+				return nil
+			case 't':
+				v.App.PerformStats()
+				return nil
+			case 'v':
+				v.App.PerformContainerVolumes()
+				return nil
+			case 'n':
+				v.App.PerformContainerNetworks()
+				return nil
+			}
+		}
+
 		// Map Ctrl-D/U to PageDown/PageUp
 		switch event.Key() {
 		case tcell.KeyCtrlD:
@@ -143,22 +172,43 @@ func (v *ResourceView) Update(headers []string, data []dao.Resource) {
 
 	// 1. Filter Data First
 	var filtered []dao.Resource
-	if v.Filter != "" {
-		for _, item := range data {
-			match := false
-			for _, cell := range item.GetCells() {
-				if strings.Contains(strings.ToLower(cell), strings.ToLower(v.Filter)) {
-					match = true
+	
+	for _, item := range data {
+		match := true
+		
+		cells := item.GetCells()
+
+		// Base Filter (Drill Down) - Exclusive
+		if v.BaseFilter != "" {
+			baseMatch := false
+			for _, cell := range cells {
+				if strings.Contains(strings.ToLower(cell), strings.ToLower(v.BaseFilter)) {
+					baseMatch = true
 					break
 				}
 			}
-			if match {
-				filtered = append(filtered, item)
+			if !baseMatch {
+				continue // Skip if not matching base filter
 			}
 		}
-	} else {
-		filtered = make([]dao.Resource, len(data))
-		copy(filtered, data)
+
+		// User Filter
+		if v.Filter != "" {
+			userMatch := false
+			for _, cell := range cells {
+				if strings.Contains(strings.ToLower(cell), strings.ToLower(v.Filter)) {
+					userMatch = true
+					break
+				}
+			}
+			if !userMatch {
+				match = false
+			}
+		}
+
+		if match {
+			filtered = append(filtered, item)
+		}
 	}
 
 	// 2. Sort Data
@@ -200,15 +250,16 @@ func (v *ResourceView) renderAll() {
 			}
 		}
 
-		cell := tview.NewTableCell(title).
-			SetTextColor(ColorHeaderFg).
+		cell := tview.NewTableCell(" " + title + " ").
+			SetTextColor(tcell.ColorAqua).
+			SetBackgroundColor(ColorBg).
 			SetSelectable(false).
 			SetExpansion(1).
 			SetAttributes(tcell.AttrBold)
 		
 		// Highlight sorted column header
 		if i == v.SortCol {
-			cell.SetTextColor(ColorTitle)
+			cell.SetTextColor(tcell.ColorMediumPurple)
 		}
 
 		v.Table.SetCell(0, i, cell)
@@ -253,6 +304,10 @@ func (v *ResourceView) SetFilter(filter string) {
 	v.Filter = filter
 }
 
+func (v *ResourceView) SetBaseFilter(filter string) {
+	v.BaseFilter = filter
+}
+
 // Helper for smart comparison
 func compareValues(a, b string) bool {
 	// 1. Percentage (e.g. "20.5%")
@@ -289,18 +344,26 @@ func isSize(s string) bool {
 func parseBytes(s string) float64 {
 	s = strings.ToUpper(s)
 	unit := 1.0
-	if strings.HasSuffix(s, "KB") || strings.HasSuffix(s, "K") {
+	// Handle binary prefixes (KiB, MiB, etc) and decimal (KB, MB, etc)
+	if strings.HasSuffix(s, "KIB") || strings.HasSuffix(s, "KB") || strings.HasSuffix(s, "K") {
 		unit = 1024
-	} else if strings.HasSuffix(s, "MB") || strings.HasSuffix(s, "M") {
+	} else if strings.HasSuffix(s, "MIB") || strings.HasSuffix(s, "MB") || strings.HasSuffix(s, "M") {
 		unit = 1024 * 1024
-	} else if strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
+	} else if strings.HasSuffix(s, "GIB") || strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
 		unit = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(s, "TB") || strings.HasSuffix(s, "T") {
+	} else if strings.HasSuffix(s, "TIB") || strings.HasSuffix(s, "TB") || strings.HasSuffix(s, "T") {
 		unit = 1024 * 1024 * 1024 * 1024
+	} else if strings.HasSuffix(s, "B") {
+		unit = 1
 	}
 	
-	valStr := strings.TrimRight(s, "KMGTB") // Trim units
-	valStr = strings.TrimSpace(valStr)
+	// Remove all non-numeric chars except dot
+	valStr := strings.Map(func(r rune) rune {
+		if (r >= '0' && r <= '9') || r == '.' {
+			return r
+		}
+		return -1
+	}, s)
 	
 	val, err := strconv.ParseFloat(valStr, 64)
 	if err != nil {
@@ -324,13 +387,13 @@ func (v *ResourceView) refreshStyles() {
 	}
 
 	if isCursorAction {
-		// Cursor + Action = Lighter Orange
-		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.NewRGBColor(140, 80, 20)).Foreground(tcell.ColorWhite))
+		// Cursor + Action (Orange Light BG, Orange Text)
+		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.NewRGBColor(80, 50, 30)).Foreground(ColorLogo))
 	} else if isCursorSelected {
-		// Cursor + Selected = Lighter Pink
-		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.NewRGBColor(140, 60, 100)).Foreground(tcell.ColorWhite))
+		// Cursor + Selected (Pink Light BG, White Text)
+		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(ColorMultiSelectBg).Foreground(tcell.ColorWhite))
 	} else {
-		// Normal Cursor
+		// Normal Cursor (Hover) -> Bg White Transparent, Texte Blanc
 		v.Table.SetSelectedStyle(tcell.StyleDefault.Background(ColorSelectBg).Foreground(ColorSelectFg))
 	}
 
@@ -348,11 +411,11 @@ func (v *ResourceView) refreshStyles() {
 		
 		// Priority: Action > Selected > Normal
 		if isAction {
-			bgColor = tcell.NewRGBColor(100, 60, 20) // Orange Dark
-			fgColor = ColorLogo // Orange
+			bgColor = tcell.NewRGBColor(80, 50, 30) // Orange Light/Dark BG
+			fgColor = ColorLogo // Orange Strong Text
 		} else if isSelected {
-			bgColor = tcell.NewRGBColor(80, 40, 60) // Pink Dark
-			fgColor = ColorAccent // Pink
+			bgColor = ColorMultiSelectBg // Pink Light/Dark BG
+			fgColor = ColorAccent // Pink Strong Text
 		} else {
 			bgColor = ColorBg
 			fgColor = ColorFg

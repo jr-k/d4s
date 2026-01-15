@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -92,6 +93,7 @@ func (a *App) initUI() {
 	a.Views[TitleNetworks] = NewResourceView(a, TitleNetworks)
 	a.Views[TitleServices] = NewResourceView(a, TitleServices)
 	a.Views[TitleNodes] = NewResourceView(a, TitleNodes)
+	a.Views[TitleCompose] = NewResourceView(a, TitleCompose)
 
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
@@ -110,11 +112,28 @@ func (a *App) initUI() {
 			a.CmdLine.SetText("")
 			a.CmdLine.SetLabel("[#ffb86c::b]VIEW> [-:-:-]")
 			a.ActiveFilter = ""
+			
+			// Handle DrillDown Exit
+			page, _ := a.Pages.GetFrontPage()
+			if strings.HasPrefix(page, "drill-") {
+				a.Pages.RemovePage(page)
+				delete(a.Views, page) // Cleanup view
+				
+				// Focus previous view
+				newPage, _ := a.Pages.GetFrontPage()
+				if view, ok := a.Views[newPage]; ok {
+					a.TviewApp.SetFocus(view.Table)
+					a.RefreshCurrentView() // Refresh restored view
+					a.updateHeader()
+				}
+				return nil
+			}
+
 			a.RefreshCurrentView()
 			a.Flash.SetText("")
 			
 			// Restore focus
-			page, _ := a.Pages.GetFrontPage()
+			page, _ = a.Pages.GetFrontPage()
 			if view, ok := a.Views[page]; ok {
 				a.TviewApp.SetFocus(view.Table)
 			} else {
@@ -168,9 +187,12 @@ func (a *App) initUI() {
 		{"[#5f87ff]:[-]             Command", "[#5f87ff]?[-]             Help"},
 		{"[#5f87ff]/[-]             Filter", "[#5f87ff]Esc[-]           Back/Clear"},
 		{"", ""},
-		{"[#ffb86c::b]VIEWS", ""},
+		{"[#ffb86c::b]DOCKER", ""},
 		{"[#5f87ff]:c[-]            Containers", "[#5f87ff]:i[-]            Images"},
 		{"[#5f87ff]:v[-]            Volumes", "[#5f87ff]:n[-]            Networks"},
+		{"[#5f87ff]:cp[-]           Compose", ""},
+		{"", ""},
+		{"[#ffb86c::b]SWARM", ""},
 		{"[#5f87ff]:s[-]            Services", "[#5f87ff]:no[-]           Nodes"},
 		{"", ""},
 		{"[#ffb86c::b]NAVIGATION", ""},
@@ -200,8 +222,7 @@ func (a *App) initUI() {
 
 	helpBox := tview.NewFrame(helpTable).
 		SetBorders(1, 1, 1, 1, 0, 0).
-		AddText(" Help ", true, tview.AlignCenter, ColorTitle).
-		AddText(" [Scroll: Arrows/PgDn] ", false, tview.AlignCenter, tcell.ColorDarkGray)
+		AddText(" Help ", true, tview.AlignCenter, ColorTitle)
 	helpBox.SetBorder(true).SetBorderColor(ColorTitle).SetBackgroundColor(tcell.ColorBlack)
 
 	// Center Modal
@@ -209,8 +230,8 @@ func (a *App) initUI() {
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(nil, 0, 1, false).
-			AddItem(helpBox, 20, 1, true).
-			AddItem(nil, 0, 1, false), 80, 1, true).
+			AddItem(helpBox, 30, 1, true).
+			AddItem(nil, 0, 1, false), 90, 1, true).
 		AddItem(nil, 0, 1, false)
 
 	helpFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -528,7 +549,8 @@ func (a *App) PerformLogs() {
 	a.TviewApp.SetFocus(logView)
 
 	// Update Footer for Logs
-	shortcuts := formatSC("s", "AutoScroll") + 
+	shortcuts := formatSC("?", "Help") + 
+				 formatSC("s", "AutoScroll") + 
 				 formatSC("w", "Wrap") + 
 				 formatSC("t", "Time") + 
 				 formatSC("c", "Copy") + 
@@ -677,7 +699,7 @@ func (a *App) getTargetIDs(view *ResourceView) ([]string, error) {
 
 func (a *App) PerformDelete() {
 	page, _ := a.Pages.GetFrontPage()
-	var action func(id string) error
+	var action func(id string, force bool) error
 	
 	switch page {
 	case TitleContainers:
@@ -687,9 +709,16 @@ func (a *App) PerformDelete() {
 	case TitleVolumes:
 		action = a.Docker.RemoveVolume
 	case TitleNetworks:
-		action = a.Docker.RemoveNetwork
+		// Network removal doesn't support force in API usually, but our interface now demands it
+		// Wrapper to ignore force if not supported
+		action = func(id string, force bool) error {
+			return a.Docker.RemoveNetwork(id)
+		}
 	case TitleServices:
-		action = a.Docker.RemoveService
+		// Service remove doesn't support force
+		action = func(id string, force bool) error {
+			return a.Docker.RemoveService(id)
+		}
 	case TitleNodes:
 		action = a.Docker.RemoveNode
 	default:
@@ -723,8 +752,12 @@ func (a *App) PerformDelete() {
 		label = fmt.Sprintf("%d items", len(ids))
 	}
 
-	a.ShowConfirmation("DELETE", label, func() {
-		a.PerformAction(action, "Deleting")
+	a.ShowConfirmation("DELETE", label, func(force bool) {
+		// Wrap action to partial function for PerformAction signature
+		simpleAction := func(id string) error {
+			return action(id, force)
+		}
+		a.PerformAction(simpleAction, "Deleting")
 	})
 }
 
@@ -748,7 +781,8 @@ func (a *App) PerformPrune() {
 		return
 	}
 
-	a.ShowConfirmation("PRUNE", name, func() {
+	a.ShowConfirmation("PRUNE", name, func(force bool) {
+		// Ignore force for prune (it's implicit or not supported same way)
 		a.Flash.SetText(fmt.Sprintf("[yellow]Pruning %s...", name))
 		go func() {
 			err := action()
@@ -791,6 +825,159 @@ func (a *App) SwitchTo(viewName string) {
 	}
 }
 
+func (a *App) SwitchToViewWithFilter(viewName, filter string) {
+	if _, ok := a.Views[viewName]; ok {
+		a.Pages.SwitchToPage(viewName)
+		a.ActiveFilter = filter
+		a.CmdLine.SetLabel("[#ffb86c::b]FILTER> [-:-:-]")
+		a.CmdLine.SetText(filter)
+		go a.RefreshCurrentView()
+		a.updateHeader()
+		a.TviewApp.SetFocus(a.Views[viewName].Table)
+	} else {
+		a.Flash.SetText(fmt.Sprintf("[red]Unknown view: %s", viewName))
+	}
+}
+
+func (a *App) PerformEnv() {
+	page, _ := a.Pages.GetFrontPage()
+	view, ok := a.Views[page]
+	if !ok { return }
+	id, err := a.getSelectedID(view)
+	if err != nil { return }
+
+	env, err := a.Docker.GetContainerEnv(id)
+	if err != nil {
+		a.Flash.SetText(fmt.Sprintf("[red]Env Error: %v", err))
+		return
+	}
+
+	// Syntax coloring: KEY=VALUE -> [blue]KEY[white]=[green]VALUE
+	var colored []string
+	for _, line := range env {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			colored = append(colored, fmt.Sprintf("[#8be9fd]%s[white]=[#50fa7b]%s", parts[0], parts[1]))
+		} else {
+			colored = append(colored, line)
+		}
+	}
+	
+	a.ShowTextView(" Environment ", strings.Join(colored, "\n"))
+}
+
+func (a *App) PerformStats() {
+	page, _ := a.Pages.GetFrontPage()
+	view, ok := a.Views[page]
+	if !ok { return }
+	id, err := a.getSelectedID(view)
+	if err != nil { return }
+
+	// Async fetch
+	a.Flash.SetText(fmt.Sprintf("[yellow]Fetching stats for %s...", id))
+	go func() {
+		stats, err := a.Docker.GetContainerStats(id)
+		a.TviewApp.QueueUpdateDraw(func() {
+			if err != nil {
+				a.Flash.SetText(fmt.Sprintf("[red]Stats Error: %v", err))
+			} else {
+				a.Flash.SetText("")
+				// Simple coloring
+				colored := strings.ReplaceAll(stats, "\"", "[#f1fa8c]\"")
+				colored = strings.ReplaceAll(colored, ": ", ": [#50fa7b]")
+				a.ShowTextView(" Stats ", colored)
+			}
+		})
+	}()
+}
+
+func (a *App) PerformContainerVolumes() {
+	page, _ := a.Pages.GetFrontPage()
+	view, ok := a.Views[page]
+	if !ok { return }
+	id, err := a.getSelectedID(view)
+	if err != nil { return }
+
+	content, err := a.Docker.Inspect("container", id)
+	if err != nil {
+		a.Flash.SetText(fmt.Sprintf("[red]Inspect Error: %v", err))
+		return
+	}
+	
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		a.Flash.SetText("[red]JSON Parse Error")
+		return
+	}
+
+	mounts, _ := json.MarshalIndent(data["Mounts"], "", "  ")
+	colored := string(mounts)
+	colored = strings.ReplaceAll(colored, "\"", "[#f1fa8c]\"")
+	colored = strings.ReplaceAll(colored, ": ", ": [#50fa7b]")
+
+	a.ShowTextView(" Volumes ", colored)
+}
+
+func (a *App) PerformContainerNetworks() {
+	page, _ := a.Pages.GetFrontPage()
+	view, ok := a.Views[page]
+	if !ok { return }
+	id, err := a.getSelectedID(view)
+	if err != nil { return }
+
+	content, err := a.Docker.Inspect("container", id)
+	if err != nil {
+		a.Flash.SetText(fmt.Sprintf("[red]Inspect Error: %v", err))
+		return
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		a.Flash.SetText("[red]JSON Parse Error")
+		return
+	}
+
+	var nets interface{}
+	if ns, ok := data["NetworkSettings"].(map[string]interface{}); ok {
+		nets = ns["Networks"]
+	}
+
+	b, _ := json.MarshalIndent(nets, "", "  ")
+	colored := string(b)
+	colored = strings.ReplaceAll(colored, "\"", "[#f1fa8c]\"")
+	colored = strings.ReplaceAll(colored, ": ", ": [#50fa7b]")
+	
+	a.ShowTextView(" Networks ", colored)
+}
+
+func (a *App) ShowTextView(title, content string) {
+	tv := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(true).
+		SetWordWrap(true).
+		SetScrollable(true).
+		SetText(content)
+	
+	tv.SetBorder(true).SetTitle(title).SetTitleColor(ColorTitle)
+	tv.SetBackgroundColor(ColorBg)
+	
+	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc {
+			a.Pages.RemovePage("textview")
+			// Restore focus
+			page, _ := a.Pages.GetFrontPage()
+			if view, ok := a.Views[page]; ok {
+				a.TviewApp.SetFocus(view.Table)
+			}
+			return nil
+		}
+		return event
+	})
+	
+	a.Pages.AddPage("textview", tv, true, true)
+	a.TviewApp.SetFocus(tv)
+}
+
 func (a *App) ActivateCmd(initial string) {
 	label := "[#ffb86c::b]CMD> [-:-:-]" // Orange for Command
 	if strings.HasPrefix(initial, "/") {
@@ -819,6 +1006,8 @@ func (a *App) ExecuteCmd(cmd string) {
 		a.SwitchTo(TitleServices)
 	case "no", "node", "nodes":
 		a.SwitchTo(TitleNodes)
+	case "cp", "compose", "projects":
+		a.SwitchTo(TitleCompose)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:
@@ -928,13 +1117,110 @@ func (a *App) InspectCurrentSelection() {
 	a.TviewApp.SetFocus(tv)
 }
 
+// DrillDown creates a temporary view with a base filter
+func (a *App) DrillDown(targetViewTitle, baseFilter, contextTitle string) {
+	// 1. Create temporary view ID
+	drillID := fmt.Sprintf("drill-%d", time.Now().UnixNano())
+	
+	// 2. Create new ResourceView
+	view := NewResourceView(a, targetViewTitle) // Use same logic as target
+	view.SetBaseFilter(baseFilter) // Mandatory filter
+	
+	// 3. Register View
+	a.Views[drillID] = view
+	a.Pages.AddPage(drillID, view.Table, true, true)
+	
+	// 4. Update Header/Context for this view
+	// We handle this in Update loop by checking if current page starts with "drill-"
+	
+	// 5. Trigger refresh immediately
+	// We need to fetch data for this view type
+	a.RefreshView(drillID, targetViewTitle) // Use targetTitle to know what to fetch
+	a.updateHeader()
+	a.TviewApp.SetFocus(view.Table)
+}
+
+func (a *App) RefreshView(viewID, viewType string) {
+	view, ok := a.Views[viewID]
+	if !ok { return }
+	
+	filter := view.Filter // Use view's own user filter
+
+	go func() {
+		var err error
+		var data []dao.Resource
+		var headers []string
+		
+		// Reuse logic from RefreshCurrentView based on viewType
+		// This duplicates switch case, ideally refactor "FetchData(viewType)"
+		switch viewType {
+		case TitleContainers:
+			headers = []string{"ID", "NAME", "IMAGE", "STATUS", "PORTS", "CPU", "MEM", "COMPOSE", "CREATED"}
+			data, err = a.Docker.ListContainers()
+		// ... other types if needed for drilldown
+		case TitleImages:
+			headers = []string{"ID", "TAGS", "SIZE", "CREATED"}
+			data, err = a.Docker.ListImages()
+		case TitleVolumes:
+			headers = []string{"NAME", "DRIVER", "MOUNTPOINT"}
+			data, err = a.Docker.ListVolumes()
+		case TitleNetworks:
+			headers = []string{"ID", "NAME", "DRIVER", "SCOPE"}
+			data, err = a.Docker.ListNetworks()
+		case TitleServices:
+			headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS"}
+			data, err = a.Docker.ListServices()
+		case TitleNodes:
+			headers = []string{"ID", "HOSTNAME", "STATUS", "AVAIL", "ROLE", "VERSION"}
+			data, err = a.Docker.ListNodes()
+		}
+
+		a.TviewApp.QueueUpdateDraw(func() {
+			if err != nil {
+				a.Flash.SetText(fmt.Sprintf("[red]Error: %v", err))
+				return
+			}
+			
+			// Update Title with Context
+			title := fmt.Sprintf(" %s ", viewType)
+			if view.BaseFilter != "" {
+				title += fmt.Sprintf("[#8be9fd][%s] ", view.BaseFilter) // Show Drill Context
+			}
+			title += fmt.Sprintf("[white][%d] ", len(data)) 
+			
+			if filter != "" {
+				title += fmt.Sprintf(" [Filter: %s] ", filter)
+			}
+			
+			view.Table.SetTitle(title)
+			view.Table.SetTitleColor(ColorTitle)
+			view.Table.SetBorder(true)
+			view.Table.SetBorderColor(ColorTableBorder)
+			
+			view.Update(headers, data)
+		})
+	}()
+}
+
 func (a *App) RefreshCurrentView() {
 	// Read state safely
 	page, _ := a.Pages.GetFrontPage()
-	if page == "help" || page == "inspect" || page == "logs" { // Don't refresh if modal is top
+	if page == "help" || page == "inspect" || page == "logs" || page == "confirm" || page == "result" { // Don't refresh if modal is top
 		return
 	}
 	
+	// Check for DrillDown
+	if strings.HasPrefix(page, "drill-") {
+		// We need to know which type it is. 
+		// We can infer from Title? Or store metadata?
+		// Currently NewResourceView sets Title.
+		view, ok := a.Views[page]
+		if ok {
+			a.RefreshView(page, view.Title) // view.Title holds the Resource Type (e.g. TitleContainers)
+		}
+		return
+	}
+
 	view, ok := a.Views[page]
 	if !ok || view == nil {
 		return
@@ -953,13 +1239,21 @@ func (a *App) RefreshCurrentView() {
 		case TitleContainers:
 			headers = []string{"ID", "NAME", "IMAGE", "STATUS", "PORTS", "CPU", "MEM", "COMPOSE", "CREATED"}
 			data, err = a.Docker.ListContainers()
-			shortcuts = fmt.Sprintf("%s %s %s %s %s %s",
+			shortcuts = fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s",
 				formatSC("l", "Logs"),
 				formatSC("s", "Shell"),
 				formatSC("S", "Stats"),
 				formatSC("d", "Inspect"),
-				formatSC("r", "Restart"),
+				formatSC("e", "Env"),
+				formatSC("t", "Top"),
+				formatSC("v", "Vols"),
+				formatSC("n", "Nets"),
+				formatSC("r", "(Re)Start"),
 				formatSC("x", "Stop"))
+		case TitleCompose:
+			headers = []string{"PROJECT", "STATUS", "CONFIG FILES"}
+			data, err = a.Docker.ListComposeProjects()
+			shortcuts = formatSC("Enter", "Containers")
 		case TitleImages:
 			headers = []string{"ID", "TAGS", "SIZE", "CREATED"}
 			data, err = a.Docker.ListImages()
@@ -1002,12 +1296,12 @@ func (a *App) RefreshCurrentView() {
 				if filter != "" {
 					title += fmt.Sprintf(" [Filter: %s] ", filter)
 				}
-				view.Table.SetTitle(title)
-				view.Table.SetTitleColor(ColorTitle)
-				view.Table.SetBorder(true)
-				view.Table.SetBorderColor(ColorTitle) // Visible border matching title color
-				
-				view.Update(headers, data)
+			view.Table.SetTitle(title)
+			view.Table.SetTitleColor(ColorTitle)
+			view.Table.SetBorder(true)
+			view.Table.SetBorderColor(ColorTableBorder)
+			
+			view.Update(headers, data)
 				
 				// Update Footer
 				a.Footer.SetText(shortcuts)
@@ -1029,7 +1323,7 @@ func formatSC(key, action string) string {
 }
 
 func commonShortcuts() string {
-	return formatSC("S+Arrows", "Sort Col") + formatSC("/", "Filter")
+	return formatSC("?", "Help") + formatSC("S+Arrows", "Sort Col") + formatSC("/", "Filter")
 }
 
 func (a *App) updateHeader() {

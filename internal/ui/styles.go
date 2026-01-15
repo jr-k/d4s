@@ -2,7 +2,7 @@ package ui
 
 import "github.com/gdamore/tcell/v2"
 
-// Indigo / Dracula-like / K9s Color Palette
+// Indigo / Dracula-like / K9s Color Palette (Restored)
 var (
 	// Main Background (Indigo/Dark Blue)
 	ColorBg          = tcell.NewRGBColor(30, 30, 46) // Dark Indigo
@@ -16,8 +16,13 @@ var (
 	// Table
 	ColorSelectBg    = tcell.NewRGBColor(68, 71, 90)    // Selection Gray/Purple
 	ColorSelectFg    = tcell.ColorWhite
-	ColorKey         = tcell.NewRGBColor(80, 250, 123)  // Green
+	ColorKey         = tcell.NewRGBColor(136, 192, 208) // Nord Cyan (Legacy) -> Use HeaderFg
 	ColorValue       = tcell.ColorWhite
+	
+	// Added for compatibility with view.go
+	ColorTableBorder = tcell.NewRGBColor(139, 233, 253) // Cyan
+	ColorMultiSelectBg = tcell.NewRGBColor(80, 30, 60) // Pink Light/Dark BG for selection
+	ColorMultiSelectFg = tcell.ColorWhite
 	
 	// Text Colors
 	ColorDim         = tcell.NewRGBColor(98, 114, 164)  // Comment/Dim
@@ -42,4 +47,5 @@ const (
 	TitleNetworks   = "Networks"
 	TitleServices   = "Services"
 	TitleNodes      = "Nodes"
+	TitleCompose    = "Compose"
 )
