@@ -249,9 +249,9 @@ func (v *ResourceView) renderAll() {
 		title := h
 		if i == v.SortCol {
 			if v.SortAsc {
-				title += " ▲"
+				title += " ↑"
 			} else {
-				title += " ▼"
+				title += " ↓"
 			}
 		}
 

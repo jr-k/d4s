@@ -114,7 +114,6 @@ var availableCommands = []string{
 	"services",
 	"nodes",
 	"compose",
-	"projects",
 	"help",
 }
 

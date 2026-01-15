@@ -22,7 +22,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{"[#ffb86c::b]DOCKER", ""},
 		{"[#5f87ff]:c[-]            Containers", "[#5f87ff]:i[-]            Images"},
 		{"[#5f87ff]:v[-]            Volumes", "[#5f87ff]:n[-]            Networks"},
-		{"[#5f87ff]:cp[-]           Compose", ""},
+		{"[#5f87ff]:p[-]            Compose", ""},
 		{"", ""},
 		{"[#ffb86c::b]SWARM", ""},
 		{"[#5f87ff]:s[-]            Services", "[#5f87ff]:no[-]           Nodes"},

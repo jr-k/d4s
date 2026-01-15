@@ -3,7 +3,13 @@ package common
 import (
 	"strconv"
 	"strings"
+	"regexp"
 )
+
+// StripColorTags removes tview color tags from a string
+func StripColorTags(text string) string {
+	return regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllString(text, "")
+}
 
 // Helper for smart comparison
 func CompareValues(a, b string) bool {

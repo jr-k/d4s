@@ -43,7 +43,7 @@ go run cmd/d4s/main.go
 ## 🍊 Our Mascotte `Citrus`
 
 <div align="left" width="100%">
-    <img src="./docs/img/d4s-citrus.png" width="128" alt="" />
+    <img src="./docs/img/d4s-citrus.png" width="128 " alt="" />
 </div>
 
 Meet **Citrus**, our vitamin-packed helper ensuring your containers stay fresh and healthy! 🍊

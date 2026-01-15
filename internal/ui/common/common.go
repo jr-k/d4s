@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 
+	"github.com/jessym/d4s/internal/dao"
 	"github.com/rivo/tview"
 )
 
@@ -23,7 +24,8 @@ type AppController interface {
 	// Accessors
 	GetPages() *tview.Pages
 	GetTviewApp() *tview.Application
-	
+	GetDocker() *dao.DockerClient
+
 	// Actions (triggered by shortcuts)
 	PerformEnv()
 	PerformStats()
@@ -31,6 +33,7 @@ type AppController interface {
 	PerformContainerNetworks()
 	
 	// State
+	GetActiveScope() *Scope
 	SetActiveScope(scope *Scope)
 	SetFilter(filter string)
 	SetFlashText(text string)

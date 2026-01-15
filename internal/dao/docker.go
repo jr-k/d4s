@@ -88,7 +88,7 @@ func (d *DockerClient) ListNodes() ([]common.Resource, error) {
 	return d.Node.List()
 }
 
-func (d *DockerClient) ListComposeProjects() ([]common.Resource, error) {
+func (d *DockerClient) ListCompose() ([]common.Resource, error) {
 	return d.Compose.List()
 }
 
