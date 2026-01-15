@@ -23,4 +23,7 @@ type Inspector interface {
 	// Lifecycle
 	OnMount(app AppController)
 	OnUnmount()
+	
+	// ApplyFilter applies a search/filter to the inspector view
+	ApplyFilter(filter string)
 }

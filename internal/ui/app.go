@@ -316,6 +316,12 @@ func (a *App) GetActiveFilter() string {
 }
 
 func (a *App) SetActiveFilter(filter string) {
+	// If inspector is active, route search to it directly
+	// Do NOT update global ActiveFilter (which belongs to Table Views)
+	if a.ActiveInspector != nil {
+		a.ActiveInspector.ApplyFilter(filter)
+		return
+	}
 	a.ActiveFilter = filter
 }
 

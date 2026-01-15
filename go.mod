@@ -3,15 +3,16 @@ module github.com/jr-k/d4s
 go 1.25.0
 
 require (
+	github.com/alecthomas/chroma/v2 v2.22.0
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/gdamore/tcell/v2 v2.8.1
+	github.com/guptarohit/asciigraph v0.7.3
 	github.com/rivo/tview v0.42.0
 	golang.org/x/net v0.47.0
 )
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.22.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

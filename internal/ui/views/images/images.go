@@ -6,9 +6,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
-	"github.com/jr-k/d4s/internal/ui/components/inspect"
 )
 
 var Headers = []string{"ID", "TAGS", "SIZE", "CREATED"}
@@ -68,7 +68,7 @@ func Describe(app common.AppController, v *view.ResourceView) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id+" Describe", content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Describe", id, content, "json"))
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {

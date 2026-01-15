@@ -12,8 +12,16 @@ import (
 
 func (a *App) RefreshCurrentView() {
 	page, _ := a.Pages.GetFrontPage()
+	
+	// Handle Inspector Filtering
+	if page == "inspect" {
+		// Inspector handles its own state/refresh via internal timers or input handlers.
+		// We do NOT apply the global ActiveFilter here as it separates Search vs Filter contexts.
+		return
+	}
+
 	// Modal check logic needs specific naming convention or check
-	if page == "help" || page == "inspect" || page == "logs" || page == "confirm" || page == "result" || page == "input" || page == "textview" {
+	if page == "help" || page == "logs" || page == "confirm" || page == "result" || page == "input" || page == "textview" {
 		return
 	}
 	
@@ -139,5 +147,5 @@ func (a *App) InspectCurrentSelection() {
 		return
 	}
 
-	a.OpenInspector(inspect.NewTextInspector(id, content, "json"))
+	a.OpenInspector(inspect.NewTextInspector("Inspect", id, content, "json"))
 }

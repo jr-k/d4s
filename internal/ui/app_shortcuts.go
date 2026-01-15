@@ -10,6 +10,9 @@ func (a *App) getCurrentShortcuts() []string {
 	
 	// Handle special pages (modals, logs) manually for now, or could attach view logic too.
 	if page == "inspect" {
+		if a.ActiveInspector != nil {
+			return a.ActiveInspector.GetShortcuts() // Use Inspector's shortcuts
+		}
 		return []string{
 			common.FormatSCHeader("c", "Copy"),
 			common.FormatSCHeader("Esc", "Close"),

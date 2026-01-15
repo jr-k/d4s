@@ -143,7 +143,7 @@ func Describe(app common.AppController, v *view.ResourceView) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id+" Describe", content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Describe", id, content, "json"))
 }
 
 func Remove(id string, force bool, app common.AppController) error {

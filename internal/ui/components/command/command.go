@@ -204,7 +204,14 @@ func (c *CommandComponent) setupHandlers() {
 					filter := strings.TrimPrefix(cmd, "/")
 					c.App.SetActiveFilter(filter)
 					c.App.RefreshCurrentView()
-					c.App.SetFlashText(fmt.Sprintf("Filter: %s", filter))
+					
+					// Flash Message Context
+					msg := fmt.Sprintf("Filter: %s", filter)
+					front, _ := c.App.GetPages().GetFrontPage()
+					if front == "inspect" {
+						msg = fmt.Sprintf("Search: %s", filter)
+					}
+					c.App.SetFlashText(msg)
 				}
 			} else {
 				c.App.ExecuteCmd(cmd)
@@ -220,10 +227,18 @@ func (c *CommandComponent) setupHandlers() {
 }
 
 func (c *CommandComponent) Activate(initial string) {
-	label := "[#ffb86c::b]CMD> [-:-:-]" // Orange for Command
+	label := "[#ffb86c::b]CMD> [-:-:-]" // Defaults to Command
+	
 	if strings.HasPrefix(initial, "/") {
-		label = "[#ffb86c::b]FILTER> [-:-:-]" // Orange for Filter
+		label = "[#ffb86c::b]FILTER> [-:-:-]"
+		
+		// Check if we are in Inspector -> SEARCH context
+		front, _ := c.App.GetPages().GetFrontPage()
+		if front == "inspect" {
+			label = "[#ffb86c::b]SEARCH> [-:-:-]"
+		}
 	}
+	
 	c.View.SetLabel(label)
 	c.View.SetText(initial)
 	c.App.GetTviewApp().SetFocus(c.View)

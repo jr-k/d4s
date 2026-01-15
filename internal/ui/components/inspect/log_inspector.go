@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ type LogInspector struct {
 	AutoScroll   bool
 	Wrap         bool
 	Timestamps   bool
+	filter       string
 	
 	// Control
 	cancelFunc   context.CancelFunc
@@ -51,16 +53,21 @@ func (i *LogInspector) GetPrimitive() tview.Primitive {
 
 func (i *LogInspector) GetTitle() string {
 	opts := []string{}
-	if i.AutoScroll { opts = append(opts, "AutoScroll: ON") }
-	if i.Wrap { opts = append(opts, "Wrap: ON") }
-	if i.Timestamps { opts = append(opts, "Time: ON") }
+	if i.AutoScroll { opts = append(opts, "AutoScroll") }
+	if i.Wrap { opts = append(opts, "Wrap") }
+	if i.Timestamps { opts = append(opts, "Time") }
 	
-	status := ""
+	mode := "Log"
 	if len(opts) > 0 {
-		status = fmt.Sprintf(" (%s)", strings.Join(opts, ", "))
+		mode = strings.Join(opts, " ")
 	}
 	
-	return fmt.Sprintf(" Logs: %s%s ", i.ResourceID, status)
+	id := i.ResourceID
+	if len(id) > 12 && i.ResourceType == "container" {
+		id = id[:12]
+	}
+	
+	return FormatInspectorTitle("Logs", id, mode, i.filter, 0, 0)
 }
 
 func (i *LogInspector) GetShortcuts() []string {
@@ -101,9 +108,20 @@ func (i *LogInspector) OnUnmount() {
 	}
 }
 
+func (i *LogInspector) ApplyFilter(filter string) {
+	i.filter = filter
+	i.updateTitle()
+	i.startStreaming()
+}
+
 func (i *LogInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyEsc {
 		i.App.CloseInspector()
+		return nil
+	}
+	
+	if event.Rune() == '/' {
+		i.App.ActivateCmd("/")
 		return nil
 	}
 	
@@ -167,43 +185,35 @@ func (i *LogInspector) startStreaming() {
 		}
 		defer reader.Close()
 
-		// Stream copy
-		// We use a small buffer or standard copy
-		// But we need to handle context cancellation to stop reading
-		
-		buf := make([]byte, 4096)
-		for {
+		// Stream using Scanner for line-by-line filtering
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				n, readErr := reader.Read(buf)
-				if n > 0 {
-					// Clean output? For now just write
-					chunk := string(buf[:n])
-					// Handle some basic coloring if needed or just dump
-					
-					// Thread safety for tview update
-					// Optim: Batch updates? For now simple queue
-					// Just writing to TextView is thread safe? No.
-					// Must use Write() if it implements io.Writer? 
-					// tview.TextView is NOT thread safe for Write() unless invoked in QueueUpdate
-					
-					// Simple implementation:
-					finalChunk := chunk // can process ANSI here if needed
-					i.App.GetTviewApp().QueueUpdateDraw(func() {
-						fmt.Fprint(i.TextView, finalChunk)
-					})
+				line := scanner.Text()
+				if i.filter != "" && !strings.Contains(line, i.filter) {
+					continue
 				}
-				if readErr != nil {
-					if readErr != io.EOF {
-						i.App.GetTviewApp().QueueUpdateDraw(func() {
-							fmt.Fprintf(i.TextView, "\n[red]Stream Error: %v", readErr)
-						})
-					}
-					return
+				
+				// Highlight match if filter exists?
+				// For logs, grep (filtering lines) is usually what is wanted.
+				// But we can also color the match.
+				if i.filter != "" {
+					line = strings.ReplaceAll(line, i.filter, fmt.Sprintf("[yellow]%s[-]", i.filter))
 				}
+				
+				i.App.GetTviewApp().QueueUpdateDraw(func() {
+					fmt.Fprintln(i.TextView, line)
+				})
 			}
+		}
+		
+		if err := scanner.Err(); err != nil && err != context.Canceled && err != io.EOF {
+			i.App.GetTviewApp().QueueUpdateDraw(func() {
+				fmt.Fprintf(i.TextView, "\n[red]Stream Error: %v", err)
+			})
 		}
 	}()
 }

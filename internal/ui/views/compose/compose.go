@@ -23,7 +23,7 @@ func Inspect(app common.AppController, id string) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id, content, "yaml"))
+	app.OpenInspector(inspect.NewTextInspector("Inspect", id, content, "yaml"))
 }
 
 func GetShortcuts() []string {

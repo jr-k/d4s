@@ -117,9 +117,14 @@ func CalculateContainerStats(body io.ReadCloser) (float64, uint64, uint64) {
 	if err := json.NewDecoder(body).Decode(&v); err != nil {
 		return 0, 0, 0
 	}
+	cpu, mem, limit, _, _, _, _ := CalculateStatsFromMap(v)
+	return cpu, mem, limit
+}
 
+func CalculateStatsFromMap(v map[string]interface{}) (float64, uint64, uint64, float64, float64, float64, float64) {
 	var cpuPercent float64
 	var memUsage, memLimit uint64
+	var netRx, netTx, diskRead, diskWrite float64
 
 	// CPU
 	if cpuStats, ok := v["cpu_stats"].(map[string]interface{}); ok {
@@ -139,9 +144,6 @@ func CalculateContainerStats(body io.ReadCloser) (float64, uint64, uint64) {
 				if t, ok := preCPUStats["system_cpu_usage"].(float64); ok { preSystemUsage = t }
 			}
 
-			// If we don't have previous stats, we can't calculate CPU usage correctly
-			// However, for the sake of showing SOMETHING, we might want to return 0.
-			
 			if systemUsage > 0.0 && totalUsage > 0.0 {
 				cpuDelta := totalUsage - preTotalUsage
 				systemDelta := systemUsage - preSystemUsage
@@ -168,7 +170,34 @@ func CalculateContainerStats(body io.ReadCloser) (float64, uint64, uint64) {
 			memLimit = uint64(limit)
 		}
 	}
+	
+	// Networks
+	if networks, ok := v["networks"].(map[string]interface{}); ok {
+		for _, netRaw := range networks {
+			if net, ok := netRaw.(map[string]interface{}); ok {
+				if rx, ok := net["rx_bytes"].(float64); ok { netRx += rx }
+				if tx, ok := net["tx_bytes"].(float64); ok { netTx += tx }
+			}
+		}
+	}
+	
+	// Disk (Block IO)
+	if blkio, ok := v["blkio_stats"].(map[string]interface{}); ok {
+		if serviceBytes, ok := blkio["io_service_bytes_recursive"].([]interface{}); ok {
+			for _, itemRaw := range serviceBytes {
+				if item, ok := itemRaw.(map[string]interface{}); ok {
+					op := ""
+					if o, ok := item["op"].(string); ok { op = strings.ToLower(o) }
+					val := 0.0
+					if v, ok := item["value"].(float64); ok { val = v }
+					
+					if op == "read" { diskRead += val }
+					if op == "write" { diskWrite += val }
+				}
+			}
+		}
+	}
 
-	return cpuPercent, memUsage, memLimit
+	return cpuPercent, memUsage, memLimit, netRx, netTx, diskRead, diskWrite
 }
 

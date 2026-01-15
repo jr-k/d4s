@@ -140,25 +140,26 @@ func Env(app common.AppController, v *view.ResourceView) {
 		lines = append(lines, line)
 	}
 	
-	app.OpenInspector(inspect.NewTextInspector(id+" Environment", strings.Join(lines, "\n"), "env"))
+	app.OpenInspector(inspect.NewTextInspector("Environment", id, strings.Join(lines, "\n"), "env"))
 }
 
 func Stats(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
 	if err != nil { return }
 
-	app.SetFlashText(fmt.Sprintf("[yellow]Fetching stats for %s...", id))
-	go func() {
-		stats, err := app.GetDocker().GetContainerStats(id)
-		app.GetTviewApp().QueueUpdateDraw(func() {
-			if err != nil {
-				app.SetFlashText(fmt.Sprintf("[red]Stats Error: %v", err))
-			} else {
-				app.SetFlashText("")
-				app.OpenInspector(inspect.NewTextInspector(id+" Stats", stats, "json"))
+	// Resolve Name
+	name := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if c, ok := v.Data[index].(dao.Container); ok {
+				name = c.Names
 			}
-		})
-	}()
+		}
+	}
+
+	app.OpenInspector(inspect.NewStatsInspector(id, name))
 }
 
 
@@ -171,7 +172,7 @@ func Volumes(app common.AppController, v *view.ResourceView) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id+" Volumes", content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Volumes", id, content, "json"))
 }
 
 func Networks(app common.AppController, v *view.ResourceView) {
@@ -183,7 +184,7 @@ func Networks(app common.AppController, v *view.ResourceView) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id+" Networks", content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Networks", id, content, "json"))
 }
 
 func Logs(app common.AppController, v *view.ResourceView) {
@@ -202,7 +203,27 @@ func Describe(app common.AppController, v *view.ResourceView) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector(id+" Describe", content, "json"))
+
+	name := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if c, ok := v.Data[index].(dao.Container); ok {
+				name = strings.TrimPrefix(c.Names, "/")
+			}
+		}
+	}
+	
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+	if name != "" {
+		subject = fmt.Sprintf("%s@%s", name, subject)
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe", subject, content, "json"))
 }
 
 func Shell(app common.AppController, id string) {
