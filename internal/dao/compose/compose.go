@@ -27,6 +27,7 @@ type ComposeProject struct {
 	Name        string
 	Status      string
 	ConfigFiles string
+	ConfigPaths []string
 }
 
 func (cp ComposeProject) GetID() string { return cp.Name }
@@ -41,9 +42,10 @@ func (m *Manager) List() ([]common.Resource, error) {
 	}
 
 	type projData struct {
-		total   int
-		running int
-		config  string
+		total       int
+		running     int
+		config      string
+		configPaths []string
 	}
 	projects := make(map[string]*projData)
 
@@ -55,11 +57,14 @@ func (m *Manager) List() ([]common.Resource, error) {
 
 		if _, ok := projects[proj]; !ok {
 			config := ""
+			var paths []string
 			if cf, ok := c.Labels["com.docker.compose.project.config_files"]; ok {
 				config = common.ShortenPath(cf)
+				paths = strings.Split(cf, ",")
 			}
 			projects[proj] = &projData{
-				config: config,
+				config:      config,
+				configPaths: paths,
 			}
 		}
 
@@ -80,6 +85,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 			Name:        name,
 			Status:      fmt.Sprintf("Running (%d/%d)", data.running, data.total),
 			ConfigFiles: configStr,
+			ConfigPaths: data.configPaths,
 		})
 	}
 	return res, nil

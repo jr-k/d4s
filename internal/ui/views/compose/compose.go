@@ -2,9 +2,13 @@ package compose
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
+	daoCompose "github.com/jr-k/d4s/internal/dao/compose"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -30,6 +34,7 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("Enter", "Containers"),
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
 		common.FormatSCHeader("x", "Stop"),
 	}
@@ -40,6 +45,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	switch event.Rune() {
 	case 'd':
 		app.InspectCurrentSelection()
+		return nil
+	case 'e':
+		EditAction(app, v)
 		return nil
 	case 'r':
 		RestartAction(app, v)
@@ -64,7 +72,7 @@ func NavigateToContainers(app common.AppController, v *view.ResourceView) {
 		
 		// Try to get config file path
 		label := projName
-		if cp, ok := res.(dao.ComposeProject); ok {
+		if cp, ok := res.(daoCompose.ComposeProject); ok {
 			if cp.ConfigFiles != "" {
 				label = cp.ConfigFiles
 			}
@@ -93,6 +101,43 @@ func StopAction(app common.AppController, v *view.ResourceView) {
 	app.PerformAction(func(id string) error {
 		return app.GetDocker().StopComposeProject(id)
 	}, "Stopping Project")
+}
+
+func EditAction(app common.AppController, v *view.ResourceView) {
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		res := v.Data[row-1]
+		if cp, ok := res.(daoCompose.ComposeProject); ok {
+			if len(cp.ConfigPaths) == 0 {
+				app.SetFlashText("[red]No config file found for this project")
+				return
+			}
+
+			// Use the first config file found
+			fileToEdit := strings.TrimSpace(cp.ConfigPaths[0])
+			if fileToEdit == "" {
+				app.SetFlashText("[red]Empty config file path")
+				return
+			}
+
+			app.GetTviewApp().Suspend(func() {
+				editor := os.Getenv("EDITOR")
+				if editor == "" {
+					editor = "vi" // Fallback
+				}
+
+				cmd := exec.Command(editor, fileToEdit)
+				cmd.Stdin = os.Stdin
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				
+				if err := cmd.Run(); err != nil {
+					fmt.Fprintf(os.Stderr, "Error running editor: %v\nPress Enter to continue...", err)
+					fmt.Scanln()
+				}
+			})
+		}
+	}
 }
 
 func Restart(app common.AppController, id string) error {
