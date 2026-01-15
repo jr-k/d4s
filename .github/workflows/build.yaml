@@ -3,7 +3,9 @@ name: build
 on:
   pull_request:
   push:
-    # run only against tags
+    # run only against tags or on push to master
+    branches:
+      - master
     tags:
       - "*"
 
