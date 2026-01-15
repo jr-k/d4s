@@ -1,0 +1,363 @@
+package ui
+
+import (
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/jessym/d4s/internal/dao"
+	"github.com/rivo/tview"
+)
+
+// ResourceView is the generic table view for any resource
+type ResourceView struct {
+	Table    *tview.Table
+	App      *App
+	Title    string
+	Data     []dao.Resource
+	Filter   string
+	SortCol  int
+	SortAsc  bool
+	ColCount int // To avoid out of bound when switching views
+	SelectedIDs map[string]bool
+	ActionStates map[string]string // ID -> Action Name (e.g. "Stopping")
+}
+
+func NewResourceView(app *App, title string) *ResourceView {
+	tv := tview.NewTable().
+		SetSelectable(true, false).
+		SetFixed(1, 1).
+		// No vertical borders for cleaner look
+		SetSeparator(' ')
+	
+	tv.SetBorder(false)
+	tv.SetBackgroundColor(ColorBg)
+	tv.SetSelectedStyle(tcell.StyleDefault.Foreground(ColorSelectFg).Background(ColorSelectBg))
+
+	v := &ResourceView{
+		Table:       tv,
+		App:         app,
+		Title:       title,
+		SortAsc:     true, // Default ASC
+		SortCol:     0,    // Default first column
+		SelectedIDs: make(map[string]bool),
+		ActionStates: make(map[string]string),
+	}
+
+	// Navigation shortcuts
+	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Sorting Shortcuts
+		if event.Modifiers()&tcell.ModShift != 0 {
+			switch event.Key() {
+			case tcell.KeyRight:
+				v.SortCol = (v.SortCol + 1) % v.ColCount
+				app.RefreshCurrentView()
+				return nil
+			case tcell.KeyLeft:
+				v.SortCol--
+				if v.SortCol < 0 {
+					v.SortCol = v.ColCount - 1
+				}
+				app.RefreshCurrentView()
+				return nil
+			case tcell.KeyUp: // ASC
+				v.SortAsc = true
+				app.RefreshCurrentView()
+				return nil
+			case tcell.KeyDown: // DESC
+				v.SortAsc = false
+				app.RefreshCurrentView()
+				return nil
+			}
+		}
+
+		// Pass through commands to App
+		switch event.Rune() {
+		case ' ': // Multi-select
+			row, _ := tv.GetSelection()
+			if row > 0 && row <= len(v.Data) {
+				item := v.Data[row-1]
+				id := item.GetID()
+				if v.SelectedIDs[id] {
+					delete(v.SelectedIDs, id)
+				} else {
+					v.SelectedIDs[id] = true
+				}
+				// Force redraw to update selection style
+				app.RefreshCurrentView() 
+			}
+			return nil
+		case '/':
+			app.ActivateCmd("/")
+			return nil
+		case ':':
+			app.ActivateCmd(":")
+			return nil
+		case 'g': // Top
+			tv.ScrollToBeginning()
+			return nil
+		case 'G': // Bottom
+			tv.ScrollToEnd()
+			return nil
+		case 'j':
+			return tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone)
+		case 'k':
+			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
+		}
+		
+		// Map Ctrl-D/U to PageDown/PageUp
+		switch event.Key() {
+		case tcell.KeyCtrlD:
+			return tcell.NewEventKey(tcell.KeyPgDn, 0, tcell.ModNone)
+		case tcell.KeyCtrlU:
+			return tcell.NewEventKey(tcell.KeyPgUp, 0, tcell.ModNone)
+		case tcell.KeyEsc:
+			if len(v.SelectedIDs) > 0 {
+				v.SelectedIDs = make(map[string]bool)
+				app.RefreshCurrentView()
+				return nil
+			}
+			return event // Let App handle Esc (e.g. Back/Quit)
+		}
+
+		return event
+	})
+
+	return v
+}
+
+func (v *ResourceView) Update(headers []string, data []dao.Resource) {
+	v.ColCount = len(headers)
+	if v.SortCol >= v.ColCount {
+		v.SortCol = 0
+	}
+
+	// 1. Filter Data First
+	var filtered []dao.Resource
+	if v.Filter != "" {
+		for _, item := range data {
+			match := false
+			for _, cell := range item.GetCells() {
+				if strings.Contains(strings.ToLower(cell), strings.ToLower(v.Filter)) {
+					match = true
+					break
+				}
+			}
+			if match {
+				filtered = append(filtered, item)
+			}
+		}
+	} else {
+		filtered = make([]dao.Resource, len(data))
+		copy(filtered, data)
+	}
+
+	// 2. Sort Data
+	sort.SliceStable(filtered, func(i, j int) bool {
+		rowI := filtered[i].GetCells()
+		rowJ := filtered[j].GetCells()
+		
+		if v.SortCol >= len(rowI) || v.SortCol >= len(rowJ) {
+			return i < j
+		}
+
+		valI := rowI[v.SortCol]
+		valJ := rowJ[v.SortCol]
+
+		// Try numeric/size sort
+		less := compareValues(valI, valJ)
+		
+		if v.SortAsc {
+			return less
+		}
+		return !less
+	})
+
+	v.Data = filtered // Update view data with sorted/filtered list
+	v.Table.Clear()
+
+	// 3. Set Headers with Indicators
+	for i, h := range headers {
+		title := h
+		if i == v.SortCol {
+			if v.SortAsc {
+				title += " ▲"
+			} else {
+				title += " ▼"
+			}
+		}
+
+		cell := tview.NewTableCell(title).
+			SetTextColor(ColorHeaderFg).
+			SetSelectable(false).
+			SetExpansion(1).
+			SetAttributes(tcell.AttrBold)
+		
+		// Highlight sorted column header
+		if i == v.SortCol {
+			cell.SetTextColor(ColorTitle)
+		}
+
+		v.Table.SetCell(0, i, cell)
+	}
+
+	// 4. Set Data
+	for i, item := range filtered {
+		cells := item.GetCells()
+		rowIndex := i + 1
+		
+		id := item.GetID()
+		isSelected := v.SelectedIDs[id]
+		actionState := v.ActionStates[id]
+		isAction := actionState != ""
+		
+		for j, text := range cells {
+			color := ColorFg
+			displayText := text
+			bgColor := ColorBg
+			
+			if isSelected {
+				bgColor = tcell.NewRGBColor(80, 40, 60) // Pink Dark Background
+				color = ColorAccent // Pink Text
+			}
+			
+			if isAction {
+				bgColor = tcell.NewRGBColor(100, 60, 20) // Orange Dark Background
+				color = ColorLogo // Orange Text
+			}
+			
+			// Custom Column Styling
+			// Assuming common column layout or detecting based on content/header
+			headerName := ""
+			if j < len(headers) {
+				headerName = strings.ToUpper(headers[j])
+			}
+
+			// 1. ID Column - Dim Color
+			if headerName == "ID" {
+				if !isSelected && !isAction { color = ColorDim }
+			}
+
+			// 2. Status Column - Color & Emoji
+			if headerName == "STATUS" {
+				if isAction {
+					displayText = "🍊 " + actionState + "..."
+				} else {
+					lowerStatus := strings.ToLower(text)
+					if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
+						if !isSelected && !isAction { color = ColorStatusGreen }
+						if !strings.Contains(text, "Up") { // Avoid double prefix if already formatted
+							displayText = "🟢 " + text
+						} else {
+							displayText = strings.Replace(text, "Up", "🟢 Up", 1)
+						}
+					} else if strings.Contains(lowerStatus, "exited") || strings.Contains(lowerStatus, "stop") {
+						if !isSelected && !isAction { color = ColorStatusGray }
+						displayText = "⚫ " + text
+					} else if strings.Contains(lowerStatus, "created") {
+						if !isSelected && !isAction { color = ColorStatusYellow }
+						displayText = "🟡 " + text
+					} else if strings.Contains(lowerStatus, "dead") || strings.Contains(lowerStatus, "error") {
+						if !isSelected && !isAction { color = ColorStatusRed }
+						displayText = "🔴 " + text
+					} else if strings.Contains(lowerStatus, "pause") {
+						if !isSelected && !isAction { color = ColorStatusYellow }
+						displayText = "⏸️ " + text
+					}
+				}
+			}
+
+			// 3. Size / Ports - Accent Color
+			if headerName == "SIZE" || headerName == "PORTS" {
+				if !isSelected && !isAction { color = ColorTitle } // Light Purple
+			}
+
+			// 3b. Mountpoint - Gray
+			if headerName == "MOUNTPOINT" {
+				if !isSelected && !isAction { color = ColorDim }
+			}
+			
+			// 4. Name / Image - White (Default)
+			if headerName == "NAME" {
+				if !isSelected && !isAction { color = tcell.ColorWhite }
+				// Bold for name
+				v.Table.SetCell(rowIndex, j, tview.NewTableCell(" "+displayText+" ").SetTextColor(color).SetBackgroundColor(bgColor).SetAttributes(tcell.AttrBold))
+				continue
+			}
+
+			v.Table.SetCell(rowIndex, j, tview.NewTableCell(" "+displayText+" ").SetTextColor(color).SetBackgroundColor(bgColor))
+		}
+	}
+	
+	// Scroll/Selection Logic
+	rowCount := v.Table.GetRowCount()
+	if rowCount > 1 {
+		row, _ := v.Table.GetSelection()
+		if row <= 0 || row >= rowCount {
+			v.Table.Select(1, 0)
+		}
+	} else {
+		v.Table.Select(0, 0)
+	}
+}
+
+func (v *ResourceView) SetActionState(id, action string) {
+	v.ActionStates[id] = action
+}
+
+func (v *ResourceView) ClearActionState(id string) {
+	delete(v.ActionStates, id)
+}
+
+func (v *ResourceView) SetFilter(filter string) {
+	v.Filter = filter
+}
+
+// Helper for smart comparison
+func compareValues(a, b string) bool {
+	// 1. Percentage (e.g. "20.5%")
+	if strings.HasSuffix(a, "%") && strings.HasSuffix(b, "%") {
+		fa, errA := strconv.ParseFloat(strings.TrimSuffix(a, "%"), 64)
+		fb, errB := strconv.ParseFloat(strings.TrimSuffix(b, "%"), 64)
+		if errA == nil && errB == nil {
+			return fa < fb
+		}
+	}
+
+	// 2. Size (e.g. "10MB", "1GB") - Simple approximation
+	if isSize(a) && isSize(b) {
+		return parseBytes(a) < parseBytes(b)
+	}
+
+	// 3. Default String Compare
+	return strings.ToLower(a) < strings.ToLower(b)
+}
+
+func isSize(s string) bool {
+	s = strings.ToUpper(s)
+	return strings.Contains(s, "B") // Rough check
+}
+
+func parseBytes(s string) float64 {
+	s = strings.ToUpper(s)
+	unit := 1.0
+	if strings.HasSuffix(s, "KB") || strings.HasSuffix(s, "K") {
+		unit = 1024
+	} else if strings.HasSuffix(s, "MB") || strings.HasSuffix(s, "M") {
+		unit = 1024 * 1024
+	} else if strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
+		unit = 1024 * 1024 * 1024
+	} else if strings.HasSuffix(s, "TB") || strings.HasSuffix(s, "T") {
+		unit = 1024 * 1024 * 1024 * 1024
+	}
+	
+	valStr := strings.TrimRight(s, "KMGTB") // Trim units
+	valStr = strings.TrimSpace(valStr)
+	
+	val, err := strconv.ParseFloat(valStr, 64)
+	if err != nil {
+		return 0
+	}
+	return val * unit
+}
