@@ -69,6 +69,10 @@ type StatsInspector struct {
 	curTx    float64
 	curRead  float64
 	curWrite float64
+
+	// Search
+	searchMatches []string
+	currentMatch  int
 }
 
 // Ensure interface compliance
@@ -103,7 +107,7 @@ func (i *StatsInspector) GetTitle() string {
 	name := strings.TrimPrefix(i.ContainerName, "/")
 	subject := fmt.Sprintf("%s@%s", name, id)
 	
-	return FormatInspectorTitle("Stats", subject, mode, i.filter, 0, 0)
+	return FormatInspectorTitle("Stats", subject, mode, i.filter, i.currentMatch, len(i.searchMatches))
 }
 
 func (i *StatsInspector) GetShortcuts() []string {
@@ -189,6 +193,8 @@ func (i *StatsInspector) OnUnmount() {
 func (i *StatsInspector) ApplyFilter(filter string) {
 	i.mu.Lock()
 	i.filter = filter
+	i.searchMatches = []string{}
+	i.currentMatch = 0
 	i.mu.Unlock()
 	
 	// Redraw without fetching new data
@@ -196,7 +202,7 @@ func (i *StatsInspector) ApplyFilter(filter string) {
 }
 
 func (i *StatsInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == tcell.KeyEsc {
+	if event.Key() == tcell.KeyEsc || event.Key() == tcell.KeyCtrlC {
 		i.App.CloseInspector()
 		return nil
 	}
@@ -214,6 +220,31 @@ func (i *StatsInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 		}
 		i.updateLayout()
 		return nil
+	}
+
+	// Navigation
+	if i.Mode == "text" && i.filter != "" && len(i.searchMatches) > 0 {
+		if event.Rune() == 'n' {
+			i.currentMatch++
+			if i.currentMatch >= len(i.searchMatches) {
+				i.currentMatch = 0 // Cycle
+			}
+			i.TextView.Highlight(i.searchMatches[i.currentMatch])
+			i.TextView.ScrollToHighlight()
+			i.Layout.SetTitle(i.GetTitle())
+			return nil
+		}
+
+		if event.Rune() == 'p' {
+			i.currentMatch--
+			if i.currentMatch < 0 {
+				i.currentMatch = len(i.searchMatches) - 1 // Cycle
+			}
+			i.TextView.Highlight(i.searchMatches[i.currentMatch])
+			i.TextView.ScrollToHighlight()
+			i.Layout.SetTitle(i.GetTitle())
+			return nil
+		}
 	}
 	
 	// Forward input
@@ -330,19 +361,30 @@ func (i *StatsInspector) draw() {
 			quick.Highlight(&buf, string(pretty), "json", "terminal256", "monokai")
 			textContent := tview.TranslateANSI(buf.String())
 
+			var matches []string
+
 			if filter != "" {
 				pattern := fmt.Sprintf(`(\[[^\]]*\])|(%s)`, regexp.QuoteMeta(filter))
 				re, err := regexp.Compile(pattern)
 				if err == nil {
+					matchCount := 0
 					textContent = re.ReplaceAllStringFunc(textContent, func(s string) string {
-						if strings.HasPrefix(s, "[") { return s }
-						return fmt.Sprintf(`[black:yellow]%s[-]`, s)
+						if strings.HasPrefix(s, "[") {
+							return s
+						}
+						// It's a match
+						id := fmt.Sprintf("match_%d", matchCount)
+						matches = append(matches, id)
+						matchCount++
+						return fmt.Sprintf(`["%s"][orange]%s[""]`, id, s)
 					})
 				}
 			}
-			
+
 			i.App.GetTviewApp().QueueUpdateDraw(func() {
-				if i.Mode != "text" { return }
+				if i.Mode != "text" {
+					return
+				}
 
 				// Persist scroll logic:
 				if i.TextView.GetText(false) != "" {
@@ -355,10 +397,23 @@ func (i *StatsInspector) draw() {
 						i.mu.Unlock()
 					}
 				}
-				
+
+				i.searchMatches = matches
+				i.TextView.SetRegions(true)
 				i.TextView.SetText(textContent)
+
+				if len(matches) > 0 {
+					// Ensure currentMatch is within bounds (if list of matches changed length)
+					if i.currentMatch >= len(matches) {
+						i.currentMatch = 0
+					}
+					i.TextView.Highlight(matches[i.currentMatch])
+				} else {
+					i.TextView.Highlight()
+				}
+
 				i.TextView.ScrollTo(lastRow, lastCol)
-				i.TextView.SetTitle(i.GetTitle())
+				i.Layout.SetTitle(i.GetTitle())
 			})
 		} else {
 			i.App.GetTviewApp().QueueUpdateDraw(func() {
