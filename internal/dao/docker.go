@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	dt "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 )
@@ -98,6 +100,36 @@ func (n Network) GetCells() []string {
 	return []string{n.ID[:12], n.Name, n.Driver, n.Scope}
 }
 
+// Service Model
+type Service struct {
+	ID       string
+	Name     string
+	Image    string
+	Mode     string
+	Replicas string
+	Ports    string
+}
+
+func (s Service) GetID() string { return s.ID }
+func (s Service) GetCells() []string {
+	return []string{s.ID[:12], s.Name, s.Image, s.Mode, s.Replicas, s.Ports}
+}
+
+// Node Model
+type Node struct {
+	ID       string
+	Hostname string
+	Status   string
+	Avail    string
+	Role     string
+	Version  string
+}
+
+func (n Node) GetID() string { return n.ID }
+func (n Node) GetCells() []string {
+	return []string{n.ID[:12], n.Hostname, n.Status, n.Avail, n.Role, n.Version}
+}
+
 func NewDockerClient() (*DockerClient, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -160,7 +192,7 @@ func (d *DockerClient) ListContainers() ([]Resource, error) {
 			Created: formatTime(c.Created),
 			Compose: compose,
 			CPU:     "0%", // Mock until async stats implemented
-			Mem:     "0%", // Mock
+			Mem:     "0% ([#6272a4]0 B[-])", // Mock
 		})
 	}
 	return res, nil
@@ -223,6 +255,68 @@ func (d *DockerClient) ListNetworks() ([]Resource, error) {
 	return res, nil
 }
 
+func (d *DockerClient) ListServices() ([]Resource, error) {
+	list, err := d.cli.ServiceList(d.ctx, dt.ServiceListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var res []Resource
+	for _, s := range list {
+		mode := ""
+		replicas := ""
+		if s.Spec.Mode.Replicated != nil {
+			mode = "Replicated"
+			if s.Spec.Mode.Replicated.Replicas != nil {
+				replicas = fmt.Sprintf("%d", *s.Spec.Mode.Replicated.Replicas)
+			}
+		} else if s.Spec.Mode.Global != nil {
+			mode = "Global"
+		}
+
+		ports := ""
+		if len(s.Endpoint.Ports) > 0 {
+			ports = fmt.Sprintf("%d->%d", s.Endpoint.Ports[0].PublishedPort, s.Endpoint.Ports[0].TargetPort)
+		}
+
+		imageName := s.Spec.TaskTemplate.ContainerSpec.Image
+		// Clean image name (remove sha)
+		if idx := strings.LastIndex(imageName, "@"); idx != -1 {
+			imageName = imageName[:idx]
+		}
+
+		res = append(res, Service{
+			ID:       s.ID,
+			Name:     s.Spec.Name,
+			Image:    imageName,
+			Mode:     mode,
+			Replicas: replicas,
+			Ports:    ports,
+		})
+	}
+	return res, nil
+}
+
+func (d *DockerClient) ListNodes() ([]Resource, error) {
+	list, err := d.cli.NodeList(d.ctx, dt.NodeListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var res []Resource
+	for _, n := range list {
+		res = append(res, Node{
+			ID:       n.ID,
+			Hostname: n.Description.Hostname,
+			Status:   string(n.Status.State),
+			Avail:    string(n.Spec.Availability),
+			Role:     string(n.Spec.Role),
+			Version:  n.Description.Engine.EngineVersion,
+		})
+	}
+	return res, nil
+}
+
 func (d *DockerClient) Inspect(resourceType, id string) (string, error) {
 	var data interface{}
 	var err error
@@ -236,6 +330,10 @@ func (d *DockerClient) Inspect(resourceType, id string) (string, error) {
 		data, err = d.cli.VolumeInspect(d.ctx, id)
 	case "network":
 		data, err = d.cli.NetworkInspect(d.ctx, id, network.InspectOptions{})
+	case "service":
+		data, _, err = d.cli.ServiceInspectWithRaw(d.ctx, id, swarm.ServiceInspectOptions{})
+	case "node":
+		data, _, err = d.cli.NodeInspectWithRaw(d.ctx, id)
 	default:
 		return "", fmt.Errorf("unknown resource type: %s", resourceType)
 	}
@@ -272,10 +370,21 @@ func (d *DockerClient) GetContainerLogs(id string, timestamps bool) (io.ReadClos
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
-		Tail:       "500", // K9s default usually
+		Tail:       "200", // Enough to fill screen, optimized start
 		Timestamps: timestamps,
 	}
 	return d.cli.ContainerLogs(d.ctx, id, opts)
+}
+
+func (d *DockerClient) GetServiceLogs(id string, timestamps bool) (io.ReadCloser, error) {
+	opts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Tail:       "200",
+		Timestamps: timestamps,
+	}
+	return d.cli.ServiceLogs(d.ctx, id, opts)
 }
 
 func (d *DockerClient) HasTTY(id string) (bool, error) {
@@ -327,6 +436,33 @@ func (d *DockerClient) RemoveNetwork(id string) error {
 func (d *DockerClient) PruneNetworks() error {
 	_, err := d.cli.NetworksPrune(d.ctx, filters.NewArgs())
 	return err
+}
+
+// Swarm Actions
+func (d *DockerClient) ScaleService(id string, replicas uint64) error {
+	service, _, err := d.cli.ServiceInspectWithRaw(d.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	if service.Spec.Mode.Replicated == nil {
+		return fmt.Errorf("service is not in replicated mode")
+	}
+
+	service.Spec.Mode.Replicated.Replicas = &replicas
+	
+	// Update
+	_, err = d.cli.ServiceUpdate(d.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
+	return err
+}
+
+func (d *DockerClient) RemoveService(id string) error {
+	return d.cli.ServiceRemove(d.ctx, id)
+}
+
+func (d *DockerClient) RemoveNode(id string) error {
+	// Force remove
+	return d.cli.NodeRemove(d.ctx, id, swarm.NodeRemoveOptions{Force: true})
 }
 
 // Helpers

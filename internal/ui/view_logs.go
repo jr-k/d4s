@@ -14,6 +14,7 @@ type LogView struct {
 	*tview.TextView
 	App            *App
 	ContainerID    string
+	ResourceType   string
 	
 	// State
 	AutoScroll     bool
@@ -25,7 +26,7 @@ type LogView struct {
 	stopChan       chan struct{}
 }
 
-func NewLogView(app *App, containerID string) *LogView {
+func NewLogView(app *App, containerID string, resourceType string) *LogView {
 	tv := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
@@ -39,6 +40,7 @@ func NewLogView(app *App, containerID string) *LogView {
 		TextView:       tv,
 		App:            app,
 		ContainerID:    containerID,
+		ResourceType:   resourceType,
 		AutoScroll:     true,
 		Wrap:           false,
 		ShowTimestamps: false,
@@ -110,10 +112,6 @@ func (lv *LogView) setupInput() {
 		case 'C': // Shift+C
 			lv.Clear()
 			return nil
-		case 'f', 'F':
-			lv.border = !lv.border
-			lv.updateTitle()
-			return nil
 		}
 		
 		return event
@@ -139,10 +137,19 @@ func (lv *LogView) restartStreaming() {
 
 func (lv *LogView) startStreaming() {
 	go func() {
-		// Determine if TTY is enabled
-		hasTTY, _ := lv.App.Docker.HasTTY(lv.ContainerID)
+		var reader io.ReadCloser
+		var err error
+		var hasTTY bool
 
-		reader, err := lv.App.Docker.GetContainerLogs(lv.ContainerID, lv.ShowTimestamps)
+		if lv.ResourceType == "service" {
+			reader, err = lv.App.Docker.GetServiceLogs(lv.ContainerID, lv.ShowTimestamps)
+			hasTTY = false // Services usually don't have TTY logs
+		} else {
+			// Determine if TTY is enabled
+			hasTTY, _ = lv.App.Docker.HasTTY(lv.ContainerID)
+			reader, err = lv.App.Docker.GetContainerLogs(lv.ContainerID, lv.ShowTimestamps)
+		}
+
 		if err != nil {
 			lv.App.TviewApp.QueueUpdateDraw(func() {
 				lv.SetText(fmt.Sprintf("[red]Error fetching logs: %v", err))

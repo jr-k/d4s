@@ -6,7 +6,7 @@ import (
 )
 
 // ShowInput shows a modal with an input field
-func (a *App) ShowInput(title, label string, onDone func(text string)) {
+func (a *App) ShowInput(title, label, initialText string, onDone func(text string)) {
 	// Center the dialog
 	dialogWidth := 50
 	dialogHeight := 7
@@ -15,7 +15,8 @@ func (a *App) ShowInput(title, label string, onDone func(text string)) {
 		SetFieldBackgroundColor(ColorSelectBg).
 		SetFieldTextColor(tcell.ColorWhite).
 		SetLabel(" " + label). // Padding label
-		SetLabelColor(tcell.ColorWhite)
+		SetLabelColor(tcell.ColorWhite).
+		SetText(initialText)
 	input.SetBackgroundColor(tcell.ColorBlack)
 	
 	// Layout

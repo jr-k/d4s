@@ -9,13 +9,13 @@ import (
 // ShowConfirmation shows a modal asking to type "Yes Please!"
 func (a *App) ShowConfirmation(actionName, item string, onConfirm func()) {
 	// Center the dialog
-	dialogWidth := 50
-	dialogHeight := 10
+	dialogWidth := 60
+	dialogHeight := 14
 
 	text := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(fmt.Sprintf("\n[red::b] DANGER ZONE \n\n[white::-]You are about to %s:\n[yellow]%s[white]\n\nType [red]Yes Please![white] to confirm.", actionName, item))
+		SetText(fmt.Sprintf("\n[red::b] DANGER ZONE \n\n[white::-]You are about to %s:\n[yellow]%s[white]\n\nType exactly: [red::b]Yes Please![white::-]", actionName, item))
 	text.SetBackgroundColor(tcell.ColorBlack)
 	
 	input := tview.NewInputField().

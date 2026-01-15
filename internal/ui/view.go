@@ -88,7 +88,7 @@ func NewResourceView(app *App, title string) *ResourceView {
 					v.SelectedIDs[id] = true
 				}
 				// Force redraw to update selection style
-				app.RefreshCurrentView() 
+				v.refreshStyles()
 			}
 			return nil
 		case '+': // Toggle Sort Order
@@ -240,135 +240,6 @@ func (v *ResourceView) renderAll() {
 	v.refreshStyles()
 }
 
-func (v *ResourceView) refreshStyles() {
-	cursorRow, _ := v.Table.GetSelection()
-	
-	for i, item := range v.Data {
-		rowIndex := i + 1
-		id := item.GetID()
-		
-		isSelected := v.SelectedIDs[id]
-		actionState := v.ActionStates[id]
-		isAction := actionState != ""
-		isCursor := (rowIndex == cursorRow)
-		
-		// Determine Base Colors
-		var bgColor tcell.Color
-		var fgColor tcell.Color
-		
-		// Priority: Action > Selected > Normal
-		if isAction {
-			bgColor = tcell.NewRGBColor(100, 60, 20) // Orange Dark
-			fgColor = ColorLogo // Orange
-		} else if isSelected {
-			bgColor = tcell.NewRGBColor(80, 40, 60) // Pink Dark
-			fgColor = ColorAccent // Pink
-		} else {
-			bgColor = ColorBg
-			fgColor = ColorFg
-		}
-		
-		// Overlay Cursor
-		if isCursor {
-			if isSelected {
-				// Cursor + Selected = Lighter Pink
-				bgColor = tcell.NewRGBColor(140, 60, 100)
-				fgColor = tcell.ColorWhite
-			} else if isAction {
-				// Cursor + Action = Lighter Orange
-				bgColor = tcell.NewRGBColor(140, 80, 20)
-				fgColor = tcell.ColorWhite
-			} else {
-				// Normal Cursor
-				bgColor = ColorSelectBg
-				fgColor = ColorSelectFg
-			}
-		}
-
-		// Apply to all cells in row
-		cells := item.GetCells()
-		for j, text := range cells {
-			cell := v.Table.GetCell(rowIndex, j)
-			if cell == nil { continue }
-			
-			// Reset text first? No need, we overwrite text for status logic
-			displayText := text
-			
-			// Specific Column Logic (Status, Name, etc)
-			// Re-apply formatting logic here because we stripped it from renderAll
-			
-			headerName := ""
-			if j < len(v.Headers) {
-				headerName = strings.ToUpper(v.Headers[j])
-			}
-
-			colColor := fgColor // Default to determined FG
-			
-			// Override FG based on column type if NOT selected/action/cursor
-			// If isSelected/Action/Cursor, we enforce the theme color (Pink/Orange/Blue)
-			// EXCEPT for status emojis which we want to keep? 
-			// K9s keeps text color white on cursor usually.
-			
-			forceTheme := isSelected || isAction || isCursor
-
-			// 1. ID Column
-			if headerName == "ID" {
-				if !forceTheme { colColor = ColorDim }
-			}
-
-			// 2. Status Column
-			if headerName == "STATUS" {
-				if isAction {
-					displayText = "🟠 " + actionState + "..."
-				} else {
-					lowerStatus := strings.ToLower(text)
-					if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
-						if !forceTheme { colColor = ColorStatusGreen }
-						if !strings.Contains(text, "Up") {
-							displayText = "🟢 " + text
-						} else {
-							displayText = strings.Replace(text, "Up", "🟢 Up", 1)
-						}
-					} else if strings.Contains(lowerStatus, "exited") || strings.Contains(lowerStatus, "stop") {
-						if !forceTheme { colColor = ColorStatusGray }
-						displayText = "⚫ " + text
-					} else if strings.Contains(lowerStatus, "created") {
-						if !forceTheme { colColor = ColorStatusYellow }
-						displayText = "🟡 " + text
-					} else if strings.Contains(lowerStatus, "dead") || strings.Contains(lowerStatus, "error") {
-						if !forceTheme { colColor = ColorStatusRed }
-						displayText = "🔴 " + text
-					} else if strings.Contains(lowerStatus, "pause") {
-						if !forceTheme { colColor = ColorStatusYellow }
-						displayText = "⏸️ " + text
-					}
-				}
-			}
-			
-			// 3. Size / Ports
-			if headerName == "SIZE" || headerName == "PORTS" {
-				if !forceTheme { colColor = ColorTitle }
-			}
-
-			// 3b. Mountpoint / Compose
-			if headerName == "MOUNTPOINT" || headerName == "COMPOSE" {
-				if !forceTheme { colColor = ColorDim }
-			}
-			
-			// 4. Name
-			if headerName == "NAME" {
-				if !forceTheme { colColor = tcell.ColorWhite }
-				cell.SetAttributes(tcell.AttrBold)
-			} else {
-				cell.SetAttributes(tcell.AttrNone)
-			}
-
-			cell.SetText(" " + displayText + " ")
-			cell.SetBackgroundColor(bgColor)
-			cell.SetTextColor(colColor)
-		}
-	}
-}
 
 func (v *ResourceView) SetActionState(id, action string) {
 	v.ActionStates[id] = action

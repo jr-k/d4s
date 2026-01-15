@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +29,7 @@ type App struct {
 	CmdLine *tview.InputField
 	Flash   *tview.TextView
 	Footer  *tview.TextView
-	Help    *tview.Modal
+	Help    tview.Primitive
 
 	// Views
 	Views map[string]*ResourceView
@@ -89,6 +90,8 @@ func (a *App) initUI() {
 	a.Views[TitleImages] = NewResourceView(a, TitleImages)
 	a.Views[TitleVolumes] = NewResourceView(a, TitleVolumes)
 	a.Views[TitleNetworks] = NewResourceView(a, TitleNetworks)
+	a.Views[TitleServices] = NewResourceView(a, TitleServices)
+	a.Views[TitleNodes] = NewResourceView(a, TitleNodes)
 
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
@@ -154,13 +157,76 @@ func (a *App) initUI() {
 	a.Footer = tview.NewTextView()
 	a.Footer.SetDynamicColors(true).SetBackgroundColor(ColorBg)
 
-	// 4. Help Modal
-	a.Help = tview.NewModal().
-		SetText("Help\n\nNavigation: Arrows, j/k\nCommand: :\nFilter: /\n\nViews:\n:c Containers\n:i Images\n:v Volumes\n:n Networks\n\nActions:\nl: Logs\ns: Shell\nS: Stats\nd: Describe\n\n[Esc] Close").
-		AddButtons([]string{"Close"}).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+	// 4. Help View
+	helpTable := tview.NewTable()
+	helpTable.SetBorders(false)
+	helpTable.SetBackgroundColor(tcell.ColorBlack)
+	
+	// Format: Col1 | Col2
+	rows := [][]string{
+		{"[#ffb86c::b]GLOBAL", ""},
+		{"[#5f87ff]:[-]             Command", "[#5f87ff]?[-]             Help"},
+		{"[#5f87ff]/[-]             Filter", "[#5f87ff]Esc[-]           Back/Clear"},
+		{"", ""},
+		{"[#ffb86c::b]VIEWS", ""},
+		{"[#5f87ff]:c[-]            Containers", "[#5f87ff]:i[-]            Images"},
+		{"[#5f87ff]:v[-]            Volumes", "[#5f87ff]:n[-]            Networks"},
+		{"[#5f87ff]:s[-]            Services", "[#5f87ff]:no[-]           Nodes"},
+		{"", ""},
+		{"[#ffb86c::b]NAVIGATION", ""},
+		{"[#5f87ff]Arrows[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]Enter[-], [#5f87ff]d[-]       Inspect"},
+		{"[#5f87ff]< >[-]           Sort Column", "[#5f87ff]+[-]             Toggle Order"},
+	}
+
+	for i, row := range rows {
+		for j, text := range row {
+			if text == "" { continue }
+			
+			cell := tview.NewTableCell(text).
+				SetTextColor(tcell.ColorWhite).
+				SetAlign(tview.AlignLeft).
+				SetExpansion(1)
+			
+			// Add padding
+			if j == 0 {
+				cell.SetText("  " + text + "      ") // Left padding + spacer
+			} else {
+				cell.SetText("  " + text) // Left padding for second col
+			}
+			
+			helpTable.SetCell(i, j, cell)
+		}
+	}
+
+	helpBox := tview.NewFrame(helpTable).
+		SetBorders(1, 1, 1, 1, 0, 0).
+		AddText(" Help ", true, tview.AlignCenter, ColorTitle).
+		AddText(" [Scroll: Arrows/PgDn] ", false, tview.AlignCenter, tcell.ColorDarkGray)
+	helpBox.SetBorder(true).SetBorderColor(ColorTitle).SetBackgroundColor(tcell.ColorBlack)
+
+	// Center Modal
+	helpFlex := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(helpBox, 20, 1, true).
+			AddItem(nil, 0, 1, false), 80, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	helpFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc || event.Rune() == 'q' {
 			a.Pages.RemovePage("help")
-		})
+			// Restore focus
+			page, _ := a.Pages.GetFrontPage()
+			if view, ok := a.Views[page]; ok {
+				a.TviewApp.SetFocus(view.Table)
+			}
+			return nil
+		}
+		return event
+	})
+	
+	a.Help = helpFlex
 
 	// 5. Inspect View (Modal TextView)
 	inspectView := tview.NewTextView().
@@ -238,6 +304,8 @@ func (a *App) initUI() {
 			page, _ := a.Pages.GetFrontPage()
 			if page == TitleContainers {
 				a.PerformShell()
+			} else if page == TitleServices {
+				a.PerformScale()
 			}
 			return nil
 		case 'c': // Contextual Create
@@ -360,7 +428,7 @@ func (a *App) PerformOpenVolume() {
 }
 
 func (a *App) PerformCreateNetwork() {
-	a.ShowInput("Create Network", "Network Name: ", func(text string) {
+	a.ShowInput("Create Network", "Network Name: ", "", func(text string) {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Creating network %s...", text))
 		go func() {
 			err := a.Docker.CreateNetwork(text)
@@ -377,7 +445,7 @@ func (a *App) PerformCreateNetwork() {
 }
 
 func (a *App) PerformCreateVolume() {
-	a.ShowInput("Create Volume", "Volume Name: ", func(text string) {
+	a.ShowInput("Create Volume", "Volume Name: ", "", func(text string) {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Creating volume %s...", text))
 		go func() {
 			err := a.Docker.CreateVolume(text)
@@ -393,6 +461,56 @@ func (a *App) PerformCreateVolume() {
 	})
 }
 
+func (a *App) PerformScale() {
+	page, _ := a.Pages.GetFrontPage()
+	if page != TitleServices { return }
+	
+	view, ok := a.Views[page]
+	if !ok { return }
+	
+	id, err := a.getSelectedID(view)
+	if err != nil { return }
+    
+	// Get current value from view data
+	currentReplicas := ""
+	row, _ := view.Table.GetSelection()
+	if row > 0 && row <= len(view.Data) {
+		item := view.Data[row-1]
+		cells := item.GetCells()
+		// Service columns: ID, NAME, IMAGE, MODE, REPLICAS, PORTS
+		// Replicas is at index 4
+		if len(cells) > 4 {
+			currentReplicas = strings.TrimSpace(cells[4])
+            // If format is "1/3", we take "3" (desired)
+            if parts := strings.Split(currentReplicas, "/"); len(parts) == 2 {
+                currentReplicas = parts[1]
+            }
+		}
+	}
+
+	a.ShowInput("Scale Service", "Replicas:", currentReplicas, func(text string) {
+		replicas, err := strconv.ParseUint(text, 10, 64)
+		if err != nil {
+			a.Flash.SetText("[red]Invalid number")
+			return
+		}
+		
+		a.Flash.SetText(fmt.Sprintf("[yellow]Scaling %s to %d...", id, replicas))
+		
+		go func() {
+			err := a.Docker.ScaleService(id, replicas)
+			a.TviewApp.QueueUpdateDraw(func() {
+				if err != nil {
+					a.Flash.SetText(fmt.Sprintf("[red]Scale Error: %v", err))
+				} else {
+					a.Flash.SetText(fmt.Sprintf("[green]Service scaled to %d", replicas))
+					a.RefreshCurrentView()
+				}
+			})
+		}()
+	})
+}
+
 func (a *App) PerformLogs() {
 	page, _ := a.Pages.GetFrontPage()
 	view, ok := a.Views[page]
@@ -400,7 +518,12 @@ func (a *App) PerformLogs() {
 	id, err := a.getSelectedID(view)
 	if err != nil { return }
 
-	logView := NewLogView(a, id)
+	resourceType := "container"
+	if page == TitleServices {
+		resourceType = "service"
+	}
+
+	logView := NewLogView(a, id, resourceType)
 	a.Pages.AddPage("logs", logView, true, true)
 	a.TviewApp.SetFocus(logView)
 
@@ -408,7 +531,6 @@ func (a *App) PerformLogs() {
 	shortcuts := formatSC("s", "AutoScroll") + 
 				 formatSC("w", "Wrap") + 
 				 formatSC("t", "Time") + 
-				 formatSC("f", "Full") + 
 				 formatSC("c", "Copy") + 
 				 formatSC("S+c", "Clear") + 
 				 formatSC("Esc", "Back")
@@ -479,7 +601,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string) {
 			}
 			
 			if len(errs) > 0 {
-				a.Flash.SetText(fmt.Sprintf("[red]Errors: %s", strings.Join(errs, "; ")))
+				a.ShowResultModal(actionName, len(ids)-len(errs), errs)
 			} else {
 				a.Flash.SetText(fmt.Sprintf("[green]%s %d items done", actionName, len(ids)))
 				// Clear selection on success?
@@ -488,6 +610,52 @@ func (a *App) PerformAction(action func(id string) error, actionName string) {
 			}
 		})
 	}()
+}
+
+func (a *App) ShowResultModal(action string, successCount int, errors []string) {
+	text := fmt.Sprintf("\n[green]✔ %d items processed successfully.\n\n[red]✘ %d items failed:\n", successCount, len(errors))
+	for _, err := range errors {
+		text += fmt.Sprintf("\n• [white]%s", err)
+	}
+	
+	tv := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(text).
+		SetTextAlign(tview.AlignLeft).
+		SetScrollable(true)
+	tv.SetBackgroundColor(tcell.ColorBlack)
+	
+	tv.SetBorder(true).SetTitle(" Action Report ").SetTitleColor(ColorError).SetBackgroundColor(tcell.ColorBlack)
+	
+	// Modal Layout
+	modalWidth := 60
+	modalHeight := 15
+	
+	flex := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(tv, modalHeight, 1, true).
+			AddItem(nil, 0, 1, false), modalWidth, 1, true).
+		AddItem(nil, 0, 1, false)
+		
+	// Close Handler
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc || event.Key() == tcell.KeyEnter {
+			a.Pages.RemovePage("result")
+			a.RefreshCurrentView()
+			// Restore focus
+			page, _ := a.Pages.GetFrontPage()
+			if view, ok := a.Views[page]; ok {
+				a.TviewApp.SetFocus(view.Table)
+			}
+			return nil
+		}
+		return event
+	})
+	
+	a.Pages.AddPage("result", flex, true, true)
+	a.TviewApp.SetFocus(flex)
 }
 
 // Helper to get target IDs (Multi or Single)
@@ -520,6 +688,10 @@ func (a *App) PerformDelete() {
 		action = a.Docker.RemoveVolume
 	case TitleNetworks:
 		action = a.Docker.RemoveNetwork
+	case TitleServices:
+		action = a.Docker.RemoveService
+	case TitleNodes:
+		action = a.Docker.RemoveNode
 	default:
 		return
 	}
@@ -531,7 +703,23 @@ func (a *App) PerformDelete() {
 	if err != nil { return }
 
 	label := ids[0]
-	if len(ids) > 1 {
+	if len(ids) == 1 {
+		// Try to get Name for better context
+		// We need to find the item in view.Data that matches this ID
+		// Since we might have filtered/sorted, we iterate to be safe or use current selection if it matches
+		// Optimization: if not multi-select, it IS the current row.
+		row, _ := view.Table.GetSelection()
+		if row > 0 && row <= len(view.Data) {
+			item := view.Data[row-1]
+			if item.GetID() == ids[0] {
+				cells := item.GetCells()
+				if len(cells) > 1 {
+					// Use 2nd column as Name (Container Name, Image Tag, etc)
+					label = fmt.Sprintf("%s ([#8be9fd]%s[yellow])", label, cells[1])
+				}
+			}
+		}
+	} else if len(ids) > 1 {
 		label = fmt.Sprintf("%d items", len(ids))
 	}
 
@@ -627,6 +815,10 @@ func (a *App) ExecuteCmd(cmd string) {
 		a.SwitchTo(TitleVolumes)
 	case "n", "ne", "net", "networks":
 		a.SwitchTo(TitleNetworks)
+	case "s", "se", "svc", "services":
+		a.SwitchTo(TitleServices)
+	case "no", "node", "nodes":
+		a.SwitchTo(TitleNodes)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:
@@ -667,6 +859,10 @@ func (a *App) InspectCurrentSelection() {
 		resourceType = "volume"
 	case TitleNetworks:
 		resourceType = "network"
+	case TitleServices:
+		resourceType = "service"
+	case TitleNodes:
+		resourceType = "node"
 	}
 
 	content, err := a.Docker.Inspect(resourceType, id)
@@ -776,6 +972,14 @@ func (a *App) RefreshCurrentView() {
 			headers = []string{"ID", "NAME", "DRIVER", "SCOPE"}
 			data, err = a.Docker.ListNetworks()
 			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("p", "Prune") + formatSC("d", "Inspect") + formatSC("c", "Create")
+		case TitleServices:
+			headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS"}
+			data, err = a.Docker.ListServices()
+			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("d", "Inspect") + formatSC("s", "Scale")
+		case TitleNodes:
+			headers = []string{"ID", "HOSTNAME", "STATUS", "AVAIL", "ROLE", "VERSION"}
+			data, err = a.Docker.ListNodes()
+			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("d", "Inspect")
 		}
 
 		// Append common shortcuts
@@ -825,7 +1029,7 @@ func formatSC(key, action string) string {
 }
 
 func commonShortcuts() string {
-	return formatSC("S+Arrows", "Sort Col") + formatSC("+", "Order") + formatSC("/", "Filter")
+	return formatSC("S+Arrows", "Sort Col") + formatSC("/", "Filter")
 }
 
 func (a *App) updateHeader() {
@@ -860,8 +1064,16 @@ func (a *App) updateHeader() {
 				a.Header.SetCell(i, 0, tview.NewTableCell(line).SetBackgroundColor(ColorBg))
 			}
 			
-			// Col 1: Spacer (Expansion to push logo right)
-			a.Header.SetCell(0, 1, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
+			// Col 1: View Info (Center)
+			page, _ := a.Pages.GetFrontPage()
+			title := fmt.Sprintf("[#f1fa8c::b]%s", strings.ToUpper(page))
+			if page == "" { title = "D4S" }
+			now := time.Now().Format("15:04:05")
+			
+			a.Header.SetCell(0, 1, tview.NewTableCell(title).SetAlign(tview.AlignCenter).SetExpansion(1).SetBackgroundColor(ColorBg))
+			a.Header.SetCell(1, 1, tview.NewTableCell(fmt.Sprintf("[dim]%s", now)).SetAlign(tview.AlignCenter).SetExpansion(1).SetBackgroundColor(ColorBg))
+			a.Header.SetCell(2, 1, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
+			a.Header.SetCell(3, 1, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
 
 			// Col 2: Logo (Right)
 			for i, line := range logo {

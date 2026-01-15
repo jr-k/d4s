@@ -40,4 +40,6 @@ const (
 	TitleImages     = "Images"
 	TitleVolumes    = "Volumes"
 	TitleNetworks   = "Networks"
+	TitleServices   = "Services"
+	TitleNodes      = "Nodes"
 )
