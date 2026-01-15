@@ -187,12 +187,12 @@ func (d *DockerClient) HasTTY(id string) (bool, error) {
 	return common.HasTTY(d.Cli, d.Ctx, id)
 }
 
-func (d *DockerClient) GetContainerLogs(id string, timestamps bool) (io.ReadCloser, error) {
-	return d.Container.Logs(id, timestamps)
+func (d *DockerClient) GetContainerLogs(id string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
+	return d.Container.Logs(id, since, tail, timestamps)
 }
 
-func (d *DockerClient) GetServiceLogs(id string, timestamps bool) (io.ReadCloser, error) {
-	return d.Service.Logs(id, timestamps)
+func (d *DockerClient) GetServiceLogs(id string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
+	return d.Service.Logs(id, since, tail, timestamps)
 }
 
 func (d *DockerClient) ListTasksForNode(nodeID string) ([]swarm.Task, error) {

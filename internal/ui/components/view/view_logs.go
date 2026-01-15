@@ -2,7 +2,6 @@ package view
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/ui/common"
@@ -106,10 +105,33 @@ func (lv *LogView) startStreaming() {
 	lv.SetText("[yellow]Loading logs...\n")
 
 	go func() {
-		var reader io.ReadCloser
-		var err error
-		_ = reader
-		_ = err
-		return
+		reader, err := lv.App.GetDocker().GetContainerLogs(lv.ResourceID, "1h", "all", lv.Timestamps)
+		if err != nil {
+			lv.App.GetTviewApp().QueueUpdateDraw(func() {
+				lv.SetText(fmt.Sprintf("[red]Error fetching logs: %v", err))
+			})
+			return
+		}
+		defer reader.Close()
+
+		// Read and display loop (simple version)
+		buf := make([]byte, 1024)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				n, err := reader.Read(buf)
+				if n > 0 {
+					text := string(buf[:n])
+					lv.App.GetTviewApp().QueueUpdateDraw(func() {
+						fmt.Fprint(lv.TextView, text)
+					})
+				}
+				if err != nil {
+					return
+				}
+			}
+		}
 	}()
 }

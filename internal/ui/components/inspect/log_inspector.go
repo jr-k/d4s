@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/styles"
@@ -26,6 +28,9 @@ type LogInspector struct {
 	Wrap         bool
 	Timestamps   bool
 	filter       string
+	since        string
+	tail         string // new field
+	sinceLabel   string
 	
 	// Control
 	cancelFunc   context.CancelFunc
@@ -42,6 +47,9 @@ func NewLogInspector(id, subject, resourceType string) *LogInspector {
 		AutoScroll:   true,
 		Wrap:         false,
 		Timestamps:   false,
+		since:        "5m",
+		tail:         "all",
+		sinceLabel:   "5m",
 	}
 }
 
@@ -55,6 +63,7 @@ func (i *LogInspector) GetPrimitive() tview.Primitive {
 
 func (i *LogInspector) GetTitle() string {
 	opts := []string{}
+	opts = append(opts, fmt.Sprintf("Since: %s", i.sinceLabel))
 	if i.AutoScroll { opts = append(opts, "AutoScroll") }
 	if i.Wrap { opts = append(opts, "Wrap") }
 	if i.Timestamps { opts = append(opts, "Time") }
@@ -68,13 +77,39 @@ func (i *LogInspector) GetTitle() string {
 }
 
 func (i *LogInspector) GetShortcuts() []string {
-	return []string{
-		common.FormatSCHeader("Esc", "Close"),
-		common.FormatSCHeader("s", "Toggle AutoScroll"),
-		common.FormatSCHeader("w", "Toggle Wrap"),
-		common.FormatSCHeader("t", "Toggle Times"),
-		common.FormatSCHeader("C", "Clear"),
+	// Helper for pink shortcuts (time/range control)
+	pinkSC := func(key, action string) string {
+		return fmt.Sprintf("[orange]<%s>[-]   %s", key, action)
 	}
+
+	pinkShortcuts := []string{
+		pinkSC("0", "Tail"),
+		pinkSC("1", "Head"),
+		pinkSC("2", "1m"),
+		pinkSC("3", "5m"),
+		pinkSC("4", "15m"),
+		pinkSC("5", "30m"),
+		pinkSC("6", "1h"),
+	}
+
+	// Calculate padding to finish the current column
+	// Max items per column is 6 (defined in header.go)
+	const maxPerCol = 6
+	paddingNeeded := maxPerCol - (len(pinkShortcuts) % maxPerCol)
+	if paddingNeeded == maxPerCol {
+		paddingNeeded = 0
+	}
+	
+	for j := 0; j < paddingNeeded; j++ {
+		pinkShortcuts = append(pinkShortcuts, "")
+	}
+
+	return append(pinkShortcuts,
+		common.FormatSCHeader("s", "Scroll"),
+		common.FormatSCHeader("w", "Wrap"),
+		common.FormatSCHeader("t", "Time"),
+		common.FormatSCHeader("C", "Clear"),
+	)
 }
 
 func (i *LogInspector) OnMount(app common.AppController) {
@@ -141,9 +176,46 @@ func (i *LogInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 		if event.Modifiers()&tcell.ModShift != 0 {
 			i.TextView.Clear()
 		}
+	case '0':
+		i.setSince("tail")
+	case '1':
+		i.setSince("head")
+	case '2':
+		i.setSince("1m")
+	case '3':
+		i.setSince("5m")
+	case '4':
+		i.setSince("15m")
+	case '5':
+		i.setSince("30m")
+	case '6':
+		i.setSince("1h")
 	}
 	
 	return event
+}
+
+func (i *LogInspector) setSince(mode string) {
+	if mode == "tail" {
+		i.since = ""
+		i.tail = "200" // Tail default
+		i.sinceLabel = "Tail"
+		i.AutoScroll = true
+	} else if mode == "head" {
+		i.since = "" 
+		i.tail = "all"
+		i.sinceLabel = "Head"
+		i.AutoScroll = false
+	} else {
+		// Time modes
+		i.since = mode
+		i.tail = "all"
+		i.sinceLabel = mode
+		i.AutoScroll = true
+	}
+
+	i.updateTitle()
+	i.startStreaming()
 }
 
 func (i *LogInspector) updateTitle() {
@@ -161,17 +233,34 @@ func (i *LogInspector) startStreaming() {
 	i.TextView.Clear()
 	i.TextView.SetText("[yellow]Loading logs...\n")
 
+	// Channels for buffering
+	logCh := make(chan string, 1000)
+	
 	go func() {
+		defer close(logCh)
+		
 		var reader io.ReadCloser
 		var err error
 		
 		docker := i.App.GetDocker()
 		
 		if i.ResourceType == "service" {
-			reader, err = docker.GetServiceLogs(i.ResourceID, i.Timestamps)
+			reader, err = docker.GetServiceLogs(i.ResourceID, i.since, i.tail, i.Timestamps)
+			if err == nil {
+				// We assume services are multiplexed (TTY=false usually)
+				// TODO: Check Service Spec for TTY
+				reader = demux(reader)
+			}
 		} else {
 			// Container
-			reader, err = docker.GetContainerLogs(i.ResourceID, i.Timestamps)
+			reader, err = docker.GetContainerLogs(i.ResourceID, i.since, i.tail, i.Timestamps)
+			if err == nil {
+				// Check for TTY
+				hasTTY, _ := docker.HasTTY(i.ResourceID)
+				if !hasTTY {
+					reader = demux(reader)
+				}
+			}
 		}
 
 		if err != nil {
@@ -182,35 +271,108 @@ func (i *LogInspector) startStreaming() {
 		}
 		defer reader.Close()
 
-		// Stream using Scanner for line-by-line filtering
+		// Stream using Scanner
 		scanner := bufio.NewScanner(reader)
+		// Increase buffer size to handle large lines
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 5*1024*1024) // 5MB limit
+		
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				line := scanner.Text()
-				if i.filter != "" && !strings.Contains(line, i.filter) {
-					continue
-				}
-				
-				// Highlight match if filter exists?
-				// For logs, grep (filtering lines) is usually what is wanted.
-				// But we can also color the match.
-				if i.filter != "" {
-					line = strings.ReplaceAll(line, i.filter, fmt.Sprintf("[yellow]%s[-]", i.filter))
-				}
-				
-				i.App.GetTviewApp().QueueUpdateDraw(func() {
-					fmt.Fprintln(i.TextView, line)
-				})
+				logCh <- line
 			}
 		}
 		
 		if err := scanner.Err(); err != nil && err != context.Canceled && err != io.EOF {
-			i.App.GetTviewApp().QueueUpdateDraw(func() {
-				fmt.Fprintf(i.TextView, "\n[red]Stream Error: %v", err)
-			})
+			logCh <- fmt.Sprintf("[red]Stream Error: %v", err)
 		}
 	}()
+
+	// Flusher Goroutine
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		var buffer []string
+		firstWrite := true
+
+		flush := func() {
+			if len(buffer) == 0 {
+				return
+			}
+			text := strings.Join(buffer, "\n") + "\n"
+			buffer = buffer[:0] // Clear buffer but keep capacity
+
+			i.App.GetTviewApp().QueueUpdateDraw(func() {
+				if firstWrite {
+					i.TextView.Clear()
+					firstWrite = false
+				}
+				// We append to the existing text
+				// tview.TextView is an io.Writer
+				w := i.TextView
+				fmt.Fprint(w, text)
+			})
+		}
+
+		for {
+			select {
+			case line, ok := <-logCh:
+				if !ok {
+					flush()
+					return
+				}
+				
+				// Filter logic
+				if i.filter != "" {
+					if !strings.Contains(line, i.filter) {
+						continue
+					}
+					// Highlight
+					line = strings.ReplaceAll(line, i.filter, fmt.Sprintf("[yellow]%s[-]", i.filter))
+				}
+				
+				// Timestamp Coloring
+				// Assuming Docker log format: "2023-01-01T00:00:00.0000Z message"
+				// Or if demuxed, it's just raw bytes, but we requested Timestamps=true in API
+				if i.Timestamps {
+					parts := strings.SplitN(line, " ", 2)
+					if len(parts) == 2 {
+						// Check if first part looks like a timestamp? 
+						// Just blind replace for perf
+						line = fmt.Sprintf("[gray]%s[-] %s", parts[0], parts[1])
+					}
+				}
+				
+				buffer = append(buffer, line)
+				
+				// Optional: if buffer gets too big, flush immediately to avoid lag
+				if len(buffer) >= 1000 {
+					flush()
+				}
+				
+			case <-ticker.C:
+				flush()
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func demux(r io.ReadCloser) io.ReadCloser {
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		defer r.Close()
+		// Determine which writer to use for stdout/stderr?
+		// For logs view, we just merge them.
+		_, _ = stdcopy.StdCopy(pw, pw, r)
+	}()
+	return pr
 }

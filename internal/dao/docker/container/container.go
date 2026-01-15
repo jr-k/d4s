@@ -199,13 +199,20 @@ func (m *Manager) Remove(id string, force bool) error {
 	return m.cli.ContainerRemove(m.ctx, id, container.RemoveOptions{Force: force})
 }
 
-func (m *Manager) Logs(id string, timestamps bool) (io.ReadCloser, error) {
+func (m *Manager) Logs(id string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
 	opts := container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
-		Tail:       "200", // Enough to fill screen, optimized start
+		Since:      since,
 		Timestamps: timestamps,
+	}
+	if tail != "" {
+		opts.Tail = tail
+	} else if since == "" {
+		opts.Tail = "200"
+	} else {
+		opts.Tail = "all"
 	}
 	return m.cli.ContainerLogs(m.ctx, id, opts)
 }

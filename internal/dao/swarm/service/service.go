@@ -111,13 +111,21 @@ func (m *Manager) Remove(id string) error {
 	return m.cli.ServiceRemove(m.ctx, id)
 }
 
-func (m *Manager) Logs(id string, timestamps bool) (io.ReadCloser, error) {
+func (m *Manager) Logs(id string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
 	opts := container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
-		Tail:       "200",
+		Since:      since,
 		Timestamps: timestamps,
+	}
+	// Service logs also use ContainerLogsOptions but passed to ServiceLogs
+	if tail != "" {
+		opts.Tail = tail
+	} else if since == "" {
+		opts.Tail = "200"
+	} else {
+		opts.Tail = "all"
 	}
 	return m.cli.ServiceLogs(m.ctx, id, opts)
 }
