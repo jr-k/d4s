@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
 )
@@ -14,6 +15,36 @@ var Headers = []string{"ID", "NAME", "DRIVER", "SCOPE"}
 
 func Fetch(app common.AppController) ([]dao.Resource, error) {
 	return app.GetDocker().ListNetworks()
+}
+
+func Inspect(app common.AppController, id string) {
+	content, err := app.GetDocker().Inspect("network", id)
+	if err != nil {
+		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
+		return
+	}
+
+	name := ""
+	list, _ := app.GetDocker().ListNetworks()
+	for _, item := range list {
+		if item.GetID() == id {
+			if net, ok := item.(dao.Network); ok {
+				name = net.Name
+			}
+			break
+		}
+	}
+
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+
+	if name != "" && name != id {
+		subject = fmt.Sprintf("%s@%s", name, subject)
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe Network", subject, content, "json"))
 }
 
 func GetShortcuts() []string {
@@ -28,6 +59,9 @@ func GetShortcuts() []string {
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
 	switch event.Rune() {
+	case 'd':
+		app.InspectCurrentSelection()
+		return nil
 	case 'a':
 		Create(app)
 		return nil

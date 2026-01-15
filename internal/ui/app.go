@@ -112,6 +112,7 @@ func (a *App) initUI() {
 	vImages := view.NewResourceView(a, styles.TitleImages)
 	vImages.ShortcutsFunc = images.GetShortcuts
 	vImages.FetchFunc = images.Fetch
+	vImages.InspectFunc = images.Inspect
 	vImages.RemoveFunc = images.Remove
 	vImages.PruneFunc = images.Prune
 	vImages.Headers = images.Headers
@@ -124,6 +125,7 @@ func (a *App) initUI() {
 	vVolumes := view.NewResourceView(a, styles.TitleVolumes)
 	vVolumes.ShortcutsFunc = volumes.GetShortcuts
 	vVolumes.FetchFunc = volumes.Fetch
+	vVolumes.InspectFunc = volumes.Inspect
 	vVolumes.RemoveFunc = volumes.Remove
 	vVolumes.PruneFunc = volumes.Prune
 	vVolumes.Headers = volumes.Headers
@@ -136,6 +138,7 @@ func (a *App) initUI() {
 	vNetworks := view.NewResourceView(a, styles.TitleNetworks)
 	vNetworks.ShortcutsFunc = networks.GetShortcuts
 	vNetworks.FetchFunc = networks.Fetch
+	vNetworks.InspectFunc = networks.Inspect
 	vNetworks.RemoveFunc = networks.Remove
 	vNetworks.PruneFunc = networks.Prune
 	vNetworks.Headers = networks.Headers
@@ -148,6 +151,7 @@ func (a *App) initUI() {
 	vServices := view.NewResourceView(a, styles.TitleServices)
 	vServices.ShortcutsFunc = services.GetShortcuts
 	vServices.FetchFunc = services.Fetch
+	vServices.InspectFunc = services.Inspect
 	vServices.RemoveFunc = services.Remove
 	vServices.Headers = services.Headers
 	vServices.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
@@ -159,6 +163,7 @@ func (a *App) initUI() {
 	vNodes := view.NewResourceView(a, styles.TitleNodes)
 	vNodes.ShortcutsFunc = nodes.GetShortcuts
 	vNodes.FetchFunc = nodes.Fetch
+	vNodes.InspectFunc = nodes.Inspect
 	vNodes.RemoveFunc = nodes.Remove
 	vNodes.Headers = nodes.Headers
 	vNodes.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {

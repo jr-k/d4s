@@ -8,6 +8,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
+	daoCommon "github.com/jr-k/d4s/internal/dao/common"
 	daoCompose "github.com/jr-k/d4s/internal/dao/compose"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
@@ -27,7 +28,25 @@ func Inspect(app common.AppController, id string) {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector("Inspect", id, content, "yaml"))
+
+	// Resolve config path for title
+	path := ""
+	projects, _ := app.GetDocker().ListCompose()
+	for _, p := range projects {
+		if cp, ok := p.(daoCompose.ComposeProject); ok {
+			if cp.Name == id && len(cp.ConfigPaths) > 0 {
+				path = cp.ConfigPaths[0]
+				break
+			}
+		}
+	}
+
+	subject := id
+	if path != "" {
+		subject = fmt.Sprintf("%s@%s", id, daoCommon.ShortenPath(path))
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe Compose", subject, content, "yaml"))
 }
 
 func GetShortcuts() []string {

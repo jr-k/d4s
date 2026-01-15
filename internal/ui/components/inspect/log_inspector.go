@@ -18,6 +18,7 @@ type LogInspector struct {
 	App          common.AppController
 	TextView     *tview.TextView
 	ResourceID   string
+	Subject      string
 	ResourceType string
 	
 	// Settings
@@ -33,9 +34,10 @@ type LogInspector struct {
 // Ensure implementation
 var _ common.Inspector = (*LogInspector)(nil)
 
-func NewLogInspector(id, resourceType string) *LogInspector {
+func NewLogInspector(id, subject, resourceType string) *LogInspector {
 	return &LogInspector{
 		ResourceID:   id,
+		Subject:      subject,
 		ResourceType: resourceType,
 		AutoScroll:   true,
 		Wrap:         false,
@@ -62,12 +64,7 @@ func (i *LogInspector) GetTitle() string {
 		mode = strings.Join(opts, " ")
 	}
 	
-	id := i.ResourceID
-	if len(id) > 12 && i.ResourceType == "container" {
-		id = id[:12]
-	}
-	
-	return FormatInspectorTitle("Logs", id, mode, i.filter, 0, 0)
+	return FormatInspectorTitle("Logs", i.Subject, mode, i.filter, 0, 0)
 }
 
 func (i *LogInspector) GetShortcuts() []string {

@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
 	"github.com/jr-k/d4s/internal/ui/styles"
@@ -24,8 +25,42 @@ func GetShortcuts() []string {
 	}
 }
 
+func Inspect(app common.AppController, id string) {
+	content, err := app.GetDocker().Inspect("node", id)
+	if err != nil {
+		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
+		return
+	}
+
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+
+	// Resolve Hostname
+	nodes, err := app.GetDocker().ListNodes()
+	if err == nil {
+		for _, item := range nodes {
+			if item.GetID() == id {
+				if n, ok := item.(dao.Node); ok {
+					subject = fmt.Sprintf("%s@%s", n.Hostname, subject)
+				}
+				break
+			}
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe Node", subject, content, "json"))
+}
+
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
+	
+	switch event.Rune() {
+	case 'd':
+		app.InspectCurrentSelection()
+		return nil
+	}
 	
 	// Navigation to Services
 	if event.Key() == tcell.KeyEnter {

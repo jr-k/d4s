@@ -72,7 +72,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		ScaleZero(app, v)
 		return nil
 	case 'd':
-		Describe(app, v)
+		app.InspectCurrentSelection()
 		return nil
 	}
 	
@@ -89,7 +89,7 @@ func Logs(app common.AppController, v *view.ResourceView) {
 	if err != nil { return }
 	
 	// Open Logs view
-	app.OpenInspector(inspect.NewLogInspector(id, "service"))
+	app.OpenInspector(inspect.NewLogInspector(id, id, "service"))
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
@@ -134,16 +134,32 @@ func ScaleZero(app common.AppController, v *view.ResourceView) {
 	})
 }
 
-func Describe(app common.AppController, v *view.ResourceView) {
-	id, err := v.GetSelectedID()
-	if err != nil { return }
-
+func Inspect(app common.AppController, id string) {
 	content, err := app.GetDocker().Inspect("service", id)
 	if err != nil {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector("Describe", id, content, "json"))
+
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+
+	// Resolve Name
+	services, err := app.GetDocker().ListServices()
+	if err == nil {
+		for _, item := range services {
+			if item.GetID() == id {
+				if s, ok := item.(dao.Service); ok {
+					subject = fmt.Sprintf("%s@%s", s.Name, subject)
+				}
+				break
+			}
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe Service", subject, content, "json"))
 }
 
 func Remove(id string, force bool, app common.AppController) error {

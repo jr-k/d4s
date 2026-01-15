@@ -32,7 +32,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		PruneAction(app)
 		return nil
 	case 'd':
-		Describe(app, v)
+		app.InspectCurrentSelection()
 		return nil
 	}
 	if event.Key() == tcell.KeyCtrlD {
@@ -59,16 +59,40 @@ func PruneAction(app common.AppController) {
 	})
 }
 
-func Describe(app common.AppController, v *view.ResourceView) {
-	id, err := v.GetSelectedID()
-	if err != nil { return }
-
+func Inspect(app common.AppController, id string) {
 	content, err := app.GetDocker().Inspect("image", id)
 	if err != nil {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector("Describe", id, content, "json"))
+
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+
+	// Resolve Tags from List
+	images, err := app.GetDocker().ListImages()
+	if err == nil {
+		for _, item := range images {
+			// dao.Image ID usually matches trimmed?
+			// dao.Image GetID returns trimmed. 'id' passed here is usually full or trimmed?
+			// app.InspectCurrentSelection passes resource.GetID().
+			// Which is trimmed in dao.Image.List().
+			// Double check? dao/docker/image/image.go: ID: strings.TrimPrefix(i.ID, "sha256:")
+			// So it is full hex without prefix, likely 64 chars.
+			if item.GetID() == id {
+				if img, ok := item.(dao.Image); ok {
+					if img.Tags != "" && img.Tags != "<none>" {
+						subject = fmt.Sprintf("%s@%s", img.Tags, subject)
+					}
+				}
+				break
+			}
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Describe Image", subject, content, "json"))
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {

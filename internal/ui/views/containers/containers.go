@@ -45,6 +45,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Env"),
 		common.FormatSCHeader("t", "Stats"),
+		common.FormatSCHeader("m", "Monitor"),
 		common.FormatSCHeader("v", "Volumes"),
 		common.FormatSCHeader("n", "Networks"),
 		common.FormatSCHeader("r", "(Re)Start"),
@@ -61,6 +62,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 't':
 		Stats(app, v)
+		return nil
+	case 'm':
+		Monitor(app, v)
 		return nil
 	case 'v':
 		Volumes(app, v)
@@ -135,12 +139,14 @@ func Env(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
+	subject := resolveContainerSubject(v, id)
+
 	var lines []string
 	for _, line := range env {
 		lines = append(lines, line)
 	}
 	
-	app.OpenInspector(inspect.NewTextInspector("Environment", id, strings.Join(lines, "\n"), "env"))
+	app.OpenInspector(inspect.NewTextInspector("Environment", subject, strings.Join(lines, "\n"), "env"))
 }
 
 func Stats(app common.AppController, v *view.ResourceView) {
@@ -162,36 +168,58 @@ func Stats(app common.AppController, v *view.ResourceView) {
 	app.OpenInspector(inspect.NewStatsInspector(id, name))
 }
 
+func Monitor(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil { return }
+
+	// Resolve Name
+	name := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if c, ok := v.Data[index].(dao.Container); ok {
+				name = c.Names
+			}
+		}
+	}
+
+	app.OpenInspector(inspect.NewMonitorInspector(id, name))
+}
+
 
 func Volumes(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
 	if err != nil { return }
+	subject := resolveContainerSubject(v, id)
 
 	content, err := app.GetDocker().Inspect("container", id)
 	if err != nil {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector("Volumes", id, content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Volumes", subject, content, "json"))
 }
 
 func Networks(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
 	if err != nil { return }
+	subject := resolveContainerSubject(v, id)
 
 	content, err := app.GetDocker().Inspect("container", id)
 	if err != nil {
 		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
 		return
 	}
-	app.OpenInspector(inspect.NewTextInspector("Networks", id, content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Networks", subject, content, "json"))
 }
 
 func Logs(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
 	if err != nil { return }
+	subject := resolveContainerSubject(v, id)
 
-	app.OpenInspector(inspect.NewLogInspector(id, "container"))
+	app.OpenInspector(inspect.NewLogInspector(id, subject, "container"))
 }
 
 func Describe(app common.AppController, v *view.ResourceView) {
@@ -223,7 +251,7 @@ func Describe(app common.AppController, v *view.ResourceView) {
 		subject = fmt.Sprintf("%s@%s", name, subject)
 	}
 
-	app.OpenInspector(inspect.NewTextInspector("Describe", subject, content, "json"))
+	app.OpenInspector(inspect.NewTextInspector("Describe Container", subject, content, "json"))
 }
 
 func Shell(app common.AppController, id string) {
@@ -279,4 +307,26 @@ func StopAction(app common.AppController, v *view.ResourceView) {
 
 func Remove(id string, force bool, app common.AppController) error {
 	return app.GetDocker().RemoveContainer(id, force)
+}
+
+func resolveContainerSubject(v *view.ResourceView, id string) string {
+	name := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if c, ok := v.Data[index].(dao.Container); ok {
+				name = strings.TrimPrefix(c.Names, "/")
+			}
+		}
+	}
+	
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+	if name != "" {
+		return fmt.Sprintf("%s@%s", name, subject)
+	}
+	return subject
 }
