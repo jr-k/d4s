@@ -38,6 +38,15 @@ var (
 	ColorStatusRed   = tcell.NewRGBColor(255, 85, 85)   // Red
 	ColorStatusGray  = tcell.NewRGBColor(98, 114, 164)  // Gray/Purple
 	ColorStatusYellow = tcell.NewRGBColor(241, 250, 140) // Yellow
+	ColorExitingBg    = tcell.NewRGBColor(255, 85, 85)   // Red
+	ColorExitingFg    = tcell.ColorRed // Red
+
+	// Actions
+	ColorActionStopping    = tcell.NewRGBColor(255, 85, 85)   // Red
+	ColorActionStarting    = tcell.NewRGBColor(98, 114, 164)  // Blueish/Purple (Dracula Comment) or Cyan
+	ColorActionRestarting  = tcell.NewRGBColor(255, 184, 108) // Orange
+	
+	ColorActionStartingBg = tcell.NewRGBColor(60, 60, 100) // Dark Blue
 )
 
 const (

@@ -36,8 +36,9 @@ type App struct {
 	Views map[string]*ResourceView
 	
 	// State
-	ActiveFilter string
-	ActiveScope  *Scope
+	ActiveFilter  string
+	ActiveScope   *Scope
+	LastHostStats dao.HostStats
 }
 
 type Scope struct {
@@ -113,6 +114,11 @@ func (a *App) initUI() {
 		SetLabelColor(tcell.ColorWhite). // Use white as base, dynamic in label string
 		SetFieldTextColor(ColorFg).
 		SetLabel("[#ffb86c::b]VIEW> [-:-:-]")
+	
+	// Add border to CmdLine with light green color
+	a.CmdLine.SetBorder(true).
+		SetBorderColor(tcell.NewRGBColor(144, 238, 144)). // Light green
+		SetBackgroundColor(ColorBg)
 	
 	// Handle Esc/Enter in Command Line
 	a.CmdLine.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -266,8 +272,8 @@ func (a *App) initUI() {
 	// 6. Layout
 	a.Layout = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(a.Header, 4, 1, false).
+		AddItem(a.CmdLine, 3, 1, false). // Moved above table with border (3 lines: border + content + border)
 		AddItem(a.Pages, 0, 1, true).
-		AddItem(a.CmdLine, 1, 1, false).
 		AddItem(a.Flash, 1, 1, false).
 		AddItem(a.Footer, 1, 1, false)
 
@@ -294,9 +300,9 @@ func (a *App) initUI() {
 		return event
 	}
 
-	// Handle Esc to clear filter
+	// Handle Esc to clear filter and exit scope
 	if event.Key() == tcell.KeyEsc {
-		// Clear active filter if any
+		// Priority 1: Clear active filter if any
 		if a.ActiveFilter != "" {
 			a.ActiveFilter = ""
 			a.CmdLine.SetText("")
@@ -305,6 +311,15 @@ func (a *App) initUI() {
 			a.Flash.SetText("")
 			return nil
 		}
+		
+		// Priority 2: Exit scope if active (return to origin view)
+		if a.ActiveScope != nil {
+			origin := a.ActiveScope.OriginView
+			a.ActiveScope = nil
+			a.SwitchTo(origin)
+			return nil
+		}
+		
 		return event
 	}
 
@@ -353,13 +368,38 @@ func (a *App) initUI() {
 				return nil
 			}
 			return nil
-		case 'r': // Restart
+		case 'r': // Restart / Start
 			// Only Containers
 			page, _ := a.Pages.GetFrontPage()
 			if page == TitleContainers {
+				// Check status to decide Start or Restart
+				view, ok := a.Views[page]
+				if ok {
+					// Check status from data
+					row, _ := view.Table.GetSelection()
+					if row > 0 && row <= len(view.Data) {
+						item := view.Data[row-1]
+						if c, ok := item.(dao.Container); ok {
+							// If Exited or Created -> Start
+							lowerStatus := strings.ToLower(c.Status)
+							if strings.Contains(lowerStatus, "exited") || strings.Contains(lowerStatus, "created") {
+								a.PerformAction(func(id string) error {
+									return a.Docker.StartContainer(id)
+								}, "Starting")
+								return nil
+							}
+						}
+					}
+				}
+				
+				// Default to Restart
 				a.PerformAction(func(id string) error {
 					return a.Docker.RestartContainer(id)
 				}, "Restarting")
+			} else if page == TitleCompose {
+				a.PerformAction(func(id string) error {
+					return a.Docker.RestartComposeProject(id)
+				}, "Restarting Project")
 			}
 			return nil
 		case 'x': // Stop
@@ -369,6 +409,10 @@ func (a *App) initUI() {
 				a.PerformAction(func(id string) error {
 					return a.Docker.StopContainer(id)
 				}, "Stopping")
+			} else if page == TitleCompose {
+				a.PerformAction(func(id string) error {
+					return a.Docker.StopComposeProject(id)
+				}, "Stopping Project")
 			}
 			return nil
 		case 'p': // Prune
@@ -997,23 +1041,29 @@ func (a *App) ActivateCmd(initial string) {
 func (a *App) ExecuteCmd(cmd string) {
 	cmd = strings.TrimPrefix(cmd, ":")
 	
+	// Helper to switch and clear scope (Root navigation)
+	switchToRoot := func(title string) {
+		a.ActiveScope = nil
+		a.SwitchTo(title)
+	}
+	
 	switch cmd {
 	case "q", "quit":
 		a.TviewApp.Stop()
 	case "c", "co", "con", "containers":
-		a.SwitchTo(TitleContainers)
+		switchToRoot(TitleContainers)
 	case "i", "im", "img", "images":
-		a.SwitchTo(TitleImages)
+		switchToRoot(TitleImages)
 	case "v", "vo", "vol", "volumes":
-		a.SwitchTo(TitleVolumes)
+		switchToRoot(TitleVolumes)
 	case "n", "ne", "net", "networks":
-		a.SwitchTo(TitleNetworks)
+		switchToRoot(TitleNetworks)
 	case "s", "se", "svc", "services":
-		a.SwitchTo(TitleServices)
+		switchToRoot(TitleServices)
 	case "no", "node", "nodes":
-		a.SwitchTo(TitleNodes)
+		switchToRoot(TitleNodes)
 	case "cp", "compose", "projects":
-		a.SwitchTo(TitleCompose)
+		switchToRoot(TitleCompose)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:
@@ -1144,14 +1194,13 @@ func (a *App) RefreshCurrentView() {
 		var err error
 		var data []dao.Resource
 		var headers []string
-		var shortcuts string
 
 		switch page {
 		case TitleContainers:
 			headers = []string{"ID", "NAME", "IMAGE", "STATUS", "AGE", "PORTS", "CPU", "MEM", "COMPOSE", "CREATED"}
 			data, err = a.Docker.ListContainers()
 			
-			// Scope Filtering
+			// Scope Filtering: filter containers by Compose project if ActiveScope is set
 			if a.ActiveScope != nil && a.ActiveScope.Type == "compose" {
 				var scopedData []dao.Resource
 				for _, res := range data {
@@ -1163,47 +1212,25 @@ func (a *App) RefreshCurrentView() {
 				}
 				data = scopedData
 			}
-
-			shortcuts = fmt.Sprintf("%s %s %s %s %s %s %s %s %s %s",
-				formatSC("l", "Logs"),
-				formatSC("s", "Shell"),
-				formatSC("S", "Stats"),
-				formatSC("d", "Inspect"),
-				formatSC("e", "Env"),
-				formatSC("t", "Top"),
-				formatSC("v", "Vols"),
-				formatSC("n", "Nets"),
-				formatSC("r", "(Re)Start"),
-				formatSC("x", "Stop"))
 		case TitleCompose:
 			headers = []string{"PROJECT", "STATUS", "CONFIG FILES"}
 			data, err = a.Docker.ListComposeProjects()
-			shortcuts = formatSC("Enter", "Containers")
 		case TitleImages:
 			headers = []string{"ID", "TAGS", "SIZE", "CREATED"}
 			data, err = a.Docker.ListImages()
-			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("p", "Prune")
 		case TitleVolumes:
 			headers = []string{"NAME", "DRIVER", "MOUNTPOINT"}
 			data, err = a.Docker.ListVolumes()
-			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("p", "Prune") + formatSC("c", "Create") + formatSC("d", "Inspect") + formatSC("o", "Open")
 		case TitleNetworks:
 			headers = []string{"ID", "NAME", "DRIVER", "SCOPE"}
 			data, err = a.Docker.ListNetworks()
-			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("p", "Prune") + formatSC("d", "Inspect") + formatSC("c", "Create")
 		case TitleServices:
 			headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS"}
 			data, err = a.Docker.ListServices()
-			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("d", "Inspect") + formatSC("s", "Scale")
 		case TitleNodes:
 			headers = []string{"ID", "HOSTNAME", "STATUS", "AVAIL", "ROLE", "VERSION"}
 			data, err = a.Docker.ListNodes()
-			shortcuts = formatSC("Ctrl-d", "Delete") + formatSC("d", "Inspect")
 		}
-
-		// Append common shortcuts
-		shortcuts += commonShortcuts()
-
 
 		// Update UI on main thread
 		a.TviewApp.QueueUpdateDraw(func() {
@@ -1217,7 +1244,23 @@ func (a *App) RefreshCurrentView() {
 				a.Flash.SetText(fmt.Sprintf("[red]Error: %v", err))
 			} else {
 				// Update Table Title
-				title := fmt.Sprintf(" %s [white][%d] ", page, len(view.Data))
+				// Use lowercase for view names as requested
+				viewName := strings.ToLower(page)
+				title := fmt.Sprintf(" [#8be9fd]%s [%d] ", viewName, len(view.Data))
+				
+				// Show scope if active
+				if a.ActiveScope != nil {
+					// Format: Parent (ParentLabel) > CurrentView [Count]
+					// e.g. compose (/path/to/compose.yml) > containers [5]
+					parentView := strings.ToLower(a.ActiveScope.OriginView)
+					
+					title = fmt.Sprintf(" [#8be9fd]%s [dim](%s) > [#bd93f9]%s [white][%d] ", 
+						parentView, 
+						a.ActiveScope.Label,
+						viewName,
+						len(view.Data))
+				}
+				
 				if filter != "" {
 					title += fmt.Sprintf(" [Filter: %s] ", filter)
 				}
@@ -1228,8 +1271,8 @@ func (a *App) RefreshCurrentView() {
 			
 			view.Update(headers, data)
 				
-				// Update Footer
-				a.Footer.SetText(shortcuts)
+				// Update Footer (cleared as shortcuts are now in header)
+				a.Footer.SetText("")
 				
 				// Status update
 				status := fmt.Sprintf("Viewing %s", page)
@@ -1242,22 +1285,104 @@ func (a *App) RefreshCurrentView() {
 	}()
 }
 
-// Helper for footer shortcuts
+func (a *App) getCurrentShortcuts() []string {
+	page, _ := a.Pages.GetFrontPage()
+	var shortcuts []string
+	
+	// Common shortcuts
+	common := []string{
+		formatSCHeader("?", "Help"),
+		formatSCHeader("/", "Filter"),
+		formatSCHeader("S+Arr", "Sort"),
+	}
+
+	switch page {
+	case TitleContainers:
+		shortcuts = []string{
+			formatSCHeader("l", "Logs"),
+			formatSCHeader("s", "Shell"),
+			formatSCHeader("S", "Stats"),
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("e", "Env"),
+			formatSCHeader("t", "Top"),
+			formatSCHeader("v", "Vols"),
+			formatSCHeader("n", "Nets"),
+			formatSCHeader("r", "(Re)Start"),
+			formatSCHeader("x", "Stop"),
+		}
+	case TitleImages:
+		shortcuts = []string{
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("p", "Prune"),
+			formatSCHeader("Ctrl-d", "Delete"),
+		}
+	case TitleVolumes:
+		shortcuts = []string{
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("o", "Open"),
+			formatSCHeader("c", "Create"),
+			formatSCHeader("p", "Prune"),
+			formatSCHeader("Ctrl-d", "Delete"),
+		}
+	case TitleNetworks:
+		shortcuts = []string{
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("c", "Create"),
+			formatSCHeader("p", "Prune"),
+			formatSCHeader("Ctrl-d", "Delete"),
+		}
+	case TitleServices:
+		shortcuts = []string{
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("s", "Scale"),
+			formatSCHeader("Ctrl-d", "Delete"),
+		}
+	case TitleNodes:
+		shortcuts = []string{
+			formatSCHeader("d", "Inspect"),
+			formatSCHeader("Ctrl-d", "Delete"),
+		}
+	case TitleCompose:
+		shortcuts = []string{
+			formatSCHeader("Enter", "Containers"),
+			formatSCHeader("r", "(Re)Start"),
+			formatSCHeader("x", "Stop"),
+		}
+	default:
+		// Just common
+	}
+	
+	// Append common shortcuts at the end
+	shortcuts = append(shortcuts, common...)
+	
+	return shortcuts
+}
+
+func formatSCHeader(key, action string) string {
+	// Format: <Key> [spaces] Label
+	// Using spaces instead of tab for predictable spacing
+	return fmt.Sprintf("[#5f87ff]<%s>[-]   %s", key, action)
+}
+
+// Helper for footer shortcuts (legacy/logs)
 func formatSC(key, action string) string {
 	return fmt.Sprintf("[#5f87ff::b]<%s>[#f8f8f2:-] %s ", key, action)
 }
 
-func commonShortcuts() string {
-	return formatSC("?", "Help") + formatSC("S+Arrows", "Sort Col") + formatSC("/", "Filter")
-}
-
 func (a *App) updateHeader() {
-	// Execute fetch in background
-	go func() {
-		stats, err := a.Docker.GetHostStats()
-		if err != nil {
-			return 
+	// Helper function to render header with given stats
+	renderHeader := func(stats dao.HostStats) {
+		// Merge with existing stats to avoid flickering "..."
+		// If new stats have "...", check if we have better old values
+		if stats.CPUPercent == "..." && a.LastHostStats.CPUPercent != "" && a.LastHostStats.CPUPercent != "..." {
+			stats.CPUPercent = a.LastHostStats.CPUPercent
 		}
+		if stats.MemPercent == "..." && a.LastHostStats.MemPercent != "" && a.LastHostStats.MemPercent != "..." {
+			stats.MemPercent = a.LastHostStats.MemPercent
+		}
+		
+		// Save for next time
+		a.LastHostStats = stats
 
 		a.TviewApp.QueueUpdateDraw(func() {
 			a.Header.Clear()
@@ -1268,45 +1393,115 @@ func (a *App) updateHeader() {
 				"[#ffb86c]   / __ \\/ // // __/",
 				"[#ffb86c]  / /_/ / // /_\\ \\ ",
 				"[#ffb86c] /_____/_//_/____/ ",
+				"",
+				"",
+			}
+			
+			// Build CPU display with cores and percentage
+			cpuDisplay := fmt.Sprintf("%s cores", stats.CPU)
+			if stats.CPUPercent != "" && stats.CPUPercent != "N/A" && stats.CPUPercent != "..." {
+				cpuDisplay += fmt.Sprintf(" (%s)", stats.CPUPercent)
+			} else if stats.CPUPercent == "..." {
+				cpuDisplay += " [dim](...)"
+			}
+			
+			// Build Mem display with total and percentage
+			memDisplay := stats.Mem
+			if stats.MemPercent != "" && stats.MemPercent != "N/A" && stats.MemPercent != "..." {
+				memDisplay += fmt.Sprintf(" (%s)", stats.MemPercent)
+			} else if stats.MemPercent == "..." {
+				memDisplay += " [dim](...)"
 			}
 			
 			lines := []string{
-				fmt.Sprintf("[#8be9fd]Context: [white]%s", stats.Context),
-				fmt.Sprintf("[#8be9fd]Cluster: [white]%s (v%s)", stats.Name, stats.Version),
-				fmt.Sprintf("[#8be9fd]CPU:     [white]%s", stats.CPU),
-				fmt.Sprintf("[#8be9fd]Mem:     [white]%s", stats.Mem),
+				fmt.Sprintf("[#8be9fd]Host:    [white]%s", stats.Hostname),
+				fmt.Sprintf("[#8be9fd]D4s Rev: [white]v%s", stats.D4SVersion),
+				fmt.Sprintf("[#8be9fd]User:    [white]%s", stats.User),
+				fmt.Sprintf("[#8be9fd]Engine:  [white]%s [dim](v%s)", stats.Name, stats.Version),
+				fmt.Sprintf("[#8be9fd]CPU:     [white]%s", cpuDisplay),
+				fmt.Sprintf("[#8be9fd]Mem:     [white]%s", memDisplay),
 			}
 
 			// Layout Header
 			// Col 0: Stats
 			for i, line := range lines {
-				a.Header.SetCell(i, 0, tview.NewTableCell(line).SetBackgroundColor(ColorBg))
+				// Add padding to the right of stats
+				cell := tview.NewTableCell(line).
+					SetBackgroundColor(ColorBg).
+					SetAlign(tview.AlignLeft).
+					SetExpansion(0) // Fixed width
+				a.Header.SetCell(i, 0, cell)
 			}
 			
-			// Col 1: View Info (Center)
-			page, _ := a.Pages.GetFrontPage()
-			title := fmt.Sprintf("[#f1fa8c::b]%s", strings.ToUpper(page))
-			
-			// Scope Display
-			if a.ActiveScope != nil {
-				title = fmt.Sprintf("[#f1fa8c::b]%s ([white]%s[#f1fa8c]) > %s", 
-					a.ActiveScope.Label, 
-					a.ActiveScope.Value, 
-					strings.ToUpper(page))
+			// Spacer Column (between Stats and Shortcuts)
+			// A fixed width column to separate them nicely (tripled size ~21 spaces)
+			spacerWidth := "                     " 
+			for i := 0; i < 6; i++ {
+				a.Header.SetCell(i, 1, tview.NewTableCell(spacerWidth).SetBackgroundColor(ColorBg))
 			}
 			
-			if page == "" { title = "D4S" }
-			now := time.Now().Format("15:04:05")
+			// Center Columns: Shortcuts
+			// Max 6 per column (matches header height)
+			shortcuts := a.getCurrentShortcuts()
+			const maxPerCol = 6
 			
-			a.Header.SetCell(0, 1, tview.NewTableCell(title).SetAlign(tview.AlignCenter).SetExpansion(1).SetBackgroundColor(ColorBg))
-			a.Header.SetCell(1, 1, tview.NewTableCell(fmt.Sprintf("[dim]%s", now)).SetAlign(tview.AlignCenter).SetExpansion(1).SetBackgroundColor(ColorBg))
-			a.Header.SetCell(2, 1, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
-			a.Header.SetCell(3, 1, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
+			colIndex := 2 // Start at 2 (0=Stats, 1=Spacer)
+			for i := 0; i < len(shortcuts); i += maxPerCol {
+				end := i + maxPerCol
+				if end > len(shortcuts) {
+					end = len(shortcuts)
+				}
+				
+				chunk := shortcuts[i:end]
+				
+				// Fill all 6 rows for this column to ensure background color
+				for row := 0; row < maxPerCol; row++ {
+					text := ""
+					if row < len(chunk) {
+						text = chunk[row] + "  " // Content + padding
+					}
+					
+					cell := tview.NewTableCell(text).
+						SetAlign(tview.AlignLeft).
+						SetExpansion(0). // Compact columns
+						SetBackgroundColor(ColorBg)
+					a.Header.SetCell(row, colIndex, cell)
+				}
+				colIndex++
+			}
+			
+			// Flexible Spacer Column (pushes logo to right)
+			// Use an empty cell with Expansion 1. Need to set it on at least one row.
+			// Set on all rows to be safe with background
+			for i := 0; i < 6; i++ {
+				a.Header.SetCell(i, colIndex, tview.NewTableCell("").SetExpansion(1).SetBackgroundColor(ColorBg))
+			}
+			colIndex++
 
-			// Col 2: Logo (Right)
+			// Right Column: Logo
 			for i, line := range logo {
-				a.Header.SetCell(i, 2, tview.NewTableCell(line).SetAlign(tview.AlignRight).SetBackgroundColor(ColorBg))
+				cell := tview.NewTableCell(line).
+					SetAlign(tview.AlignRight).
+					SetBackgroundColor(ColorBg).
+					SetExpansion(0) // Fixed width
+				a.Header.SetCell(i, colIndex, cell)
 			}
 		})
+	}
+	
+	// Execute fetch in background
+	go func() {
+		// First, get basic stats immediately (with placeholders)
+		stats, err := a.Docker.GetHostStats()
+		if err != nil {
+			return 
+		}
+		renderHeader(stats)
+		
+		// Then, get detailed stats with usage (takes time)
+		statsWithUsage, err := a.Docker.GetHostStatsWithUsage()
+		if err == nil {
+			renderHeader(statsWithUsage)
+		}
 	}()
 }

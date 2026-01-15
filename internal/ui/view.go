@@ -408,15 +408,45 @@ func (v *ResourceView) refreshStyles() {
 		isSelected := v.SelectedIDs[id]
 		actionState := v.ActionStates[id]
 		isAction := actionState != ""
+		isExiting := false
+		isStarting := false
 		
+		// Check for Exiting/Starting status in Data (Backend status)
+		if container, ok := item.(dao.Container); ok {
+			lowerStatus := strings.ToLower(container.Status)
+			if strings.Contains(lowerStatus, "exiting") {
+				isExiting = true
+			}
+			if strings.Contains(lowerStatus, "starting") {
+				isStarting = true
+			}
+		}
+
 		// Determine Base Colors
 		var bgColor tcell.Color
 		var fgColor tcell.Color
 		
-		// Priority: Action > Selected > Normal
-		if isAction {
-			bgColor = tcell.NewRGBColor(80, 50, 30) // Orange Light/Dark BG
-			fgColor = ColorLogo // Orange Strong Text
+		// Priority: Starting/Exiting > Action > Selected > Normal
+		// The requirement is that Starting/Exiting override everything
+		
+		if isStarting {
+			bgColor = ColorActionStartingBg // Blue Background
+			fgColor = tcell.ColorWhite      // White Text
+		} else if isExiting {
+			bgColor = ColorExitingBg        // Red Background
+			fgColor = tcell.ColorWhite      // White Text
+		} else if isAction {
+			if strings.Contains(actionState, "Stopping") {
+				bgColor = ColorActionStopping
+				fgColor = tcell.ColorWhite
+			} else if strings.Contains(actionState, "Starting") && !strings.Contains(actionState, "Restarting") {
+				bgColor = ColorActionStartingBg // Blue
+				fgColor = tcell.ColorWhite
+			} else {
+				// Restarting or others -> Orange
+				bgColor = tcell.NewRGBColor(80, 50, 30) 
+				fgColor = ColorLogo
+			}
 		} else if isSelected {
 			bgColor = ColorMultiSelectBg // Pink Light/Dark BG
 			fgColor = ColorAccent // Pink Strong Text
@@ -442,8 +472,8 @@ func (v *ResourceView) refreshStyles() {
 			colColor := fgColor // Default to determined FG
 			
 			// Override FG based on column type if NOT selected/action
-			// If isSelected/Action, we enforce the theme color (Pink/Orange)
-			forceTheme := isSelected || isAction
+			// If isSelected/Action/Starting/Exiting, we enforce the theme color
+			forceTheme := isSelected || isAction || isStarting || isExiting
 
 			// 1. ID Column
 			if headerName == "ID" {
@@ -453,10 +483,22 @@ func (v *ResourceView) refreshStyles() {
 			// 2. Status Column
 			if headerName == "STATUS" {
 				if isAction {
-					displayText = "🟠 " + actionState + "..."
+					if strings.Contains(actionState, "Stopping") {
+						displayText = "🔴 " + actionState + "..."
+					} else if strings.Contains(actionState, "Starting") && !strings.Contains(actionState, "Restarting") {
+						displayText = "🔵 " + actionState + "..."
+					} else {
+						displayText = "🟠 " + actionState + "..."
+					}
 				} else {
 					lowerStatus := strings.ToLower(text)
-					if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
+					if strings.Contains(lowerStatus, "exiting") {
+						displayText = "🔴 " + text
+						// Colors are handled by row-level check
+					} else if strings.Contains(lowerStatus, "starting") {
+						displayText = "🔵 " + text
+						// Colors handled by row-level check
+					} else if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
 						if !forceTheme { colColor = ColorStatusGreen }
 						if !strings.Contains(text, "Up") {
 							displayText = "🟢 " + text

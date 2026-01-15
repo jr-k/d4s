@@ -40,6 +40,7 @@ type HostStats struct {
 	Version    string
 	Context    string
 	User       string
+	Hostname   string
 	D4SVersion string
 }
 
@@ -162,17 +163,125 @@ func (d *DockerClient) GetHostStats() (HostStats, error) {
 		return HostStats{}, err
 	}
 	
-	// Basic Mock stats for now as real-time host stats require system access
-	// or complex docker stats aggregation. We use Info for static data.
 	memTotal := formatBytes(info.MemTotal)
 	
+	// Get current user
+	user := os.Getenv("USER")
+	if user == "" {
+		user = os.Getenv("USERNAME") // Windows fallback
+	}
+	if user == "" {
+		user = "unknown"
+	}
+	
+	// Get hostname
+	hostname, _ := os.Hostname()
+
 	return HostStats{
-		CPU:     fmt.Sprintf("%d CPUs", info.NCPU),
-		Mem:     memTotal,
-		Name:    info.Name,
-		Version: info.ServerVersion,
-		Context: "default", // TODO: Fetch real context name
+		CPU:        fmt.Sprintf("%d", info.NCPU),
+		CPUPercent: "...", // Placeholder
+		Mem:        memTotal,
+		MemPercent: "...", // Placeholder
+		Name:       info.Name,
+		Version:    info.ServerVersion,
+		Context:    "default",
+		User:       user,
+		Hostname:   hostname,
+		D4SVersion: "1.0.0",
 	}, nil
+}
+
+// GetHostStatsWithUsage returns host stats including CPU and Memory usage percentages
+// This is a more expensive call and should be called asynchronously
+func (d *DockerClient) GetHostStatsWithUsage() (HostStats, error) {
+	// First get basic stats
+	stats, err := d.GetHostStats()
+	if err != nil {
+		return stats, err
+	}
+	
+	// Then calculate usage stats asynchronously
+	info, _ := d.cli.Info(d.ctx)
+	containers, err := d.cli.ContainerList(d.ctx, container.ListOptions{All: false})
+	if err != nil || len(containers) == 0 {
+		return stats, nil
+	}
+	
+	var totalCPU float64
+	var totalMem uint64
+	validStats := 0
+	
+	// Collect stats from first few containers (to avoid blocking too long)
+	maxContainers := len(containers)
+	if maxContainers > 10 {
+		maxContainers = 10 // Limit to 10 containers for performance
+	}
+	
+	for i := 0; i < maxContainers; i++ {
+		c := containers[i]
+		statsResp, err := d.cli.ContainerStats(d.ctx, c.ID, false)
+		if err != nil {
+			continue
+		}
+		
+		var v map[string]interface{}
+		if err := json.NewDecoder(statsResp.Body).Decode(&v); err != nil {
+			statsResp.Body.Close()
+			continue
+		}
+		statsResp.Body.Close()
+		
+		// Extract CPU stats
+		if cpuStats, ok := v["cpu_stats"].(map[string]interface{}); ok {
+			if preCPUStats, ok := v["precpu_stats"].(map[string]interface{}); ok {
+				if cpuUsage, ok := cpuStats["cpu_usage"].(map[string]interface{}); ok {
+					if preCPUUsage, ok := preCPUStats["cpu_usage"].(map[string]interface{}); ok {
+						if totalUsage, ok := cpuUsage["total_usage"].(float64); ok {
+							if preTotalUsage, ok := preCPUUsage["total_usage"].(float64); ok {
+								if systemUsage, ok := cpuStats["system_cpu_usage"].(float64); ok {
+									if preSystemUsage, ok := preCPUStats["system_cpu_usage"].(float64); ok {
+										cpuDelta := totalUsage - preTotalUsage
+										systemDelta := systemUsage - preSystemUsage
+										if systemDelta > 0 && cpuDelta > 0 {
+											if percpu, ok := cpuUsage["percpu_usage"].([]interface{}); ok {
+												cpuPct := (cpuDelta / systemDelta) * float64(len(percpu)) * 100.0
+												totalCPU += cpuPct
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// Extract memory stats
+		if memStats, ok := v["memory_stats"].(map[string]interface{}); ok {
+			if usage, ok := memStats["usage"].(float64); ok {
+				totalMem += uint64(usage)
+				validStats++
+			}
+		}
+	}
+	
+	// Format CPU percentage
+	if validStats > 0 && totalCPU > 0 {
+		stats.CPUPercent = fmt.Sprintf("%.1f%%", totalCPU)
+	} else {
+		stats.CPUPercent = "0%"
+	}
+	
+	// Format Memory percentage
+	if info.MemTotal > 0 && totalMem > 0 {
+		memPct := float64(totalMem) / float64(info.MemTotal) * 100.0
+		stats.MemPercent = fmt.Sprintf("%.1f%%", memPct)
+	} else {
+		stats.MemPercent = "0%"
+	}
+	
+	return stats, nil
 }
 
 func (d *DockerClient) ListContainers() ([]Resource, error) {
@@ -266,6 +375,64 @@ func (d *DockerClient) ListComposeProjects() ([]Resource, error) {
 		})
 	}
 	return res, nil
+}
+
+// Compose Actions
+func (d *DockerClient) StopComposeProject(projectName string) error {
+	// Find all containers with this project name
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
+	
+	containers, err := d.cli.ContainerList(d.ctx, container.ListOptions{Filters: args, All: true})
+	if err != nil {
+		return err
+	}
+	
+	if len(containers) == 0 {
+		return fmt.Errorf("no containers found for project %s", projectName)
+	}
+
+	// Stop them all (sequentially for now, or parallel if needed)
+	timeout := 10
+	var errs []string
+	for _, c := range containers {
+		if err := d.cli.ContainerStop(d.ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", c.Names[0], err))
+		}
+	}
+	
+	if len(errs) > 0 {
+		return fmt.Errorf("errors stopping containers: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+func (d *DockerClient) RestartComposeProject(projectName string) error {
+	// Find all containers with this project name
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
+	
+	containers, err := d.cli.ContainerList(d.ctx, container.ListOptions{Filters: args, All: true})
+	if err != nil {
+		return err
+	}
+
+	if len(containers) == 0 {
+		return fmt.Errorf("no containers found for project %s", projectName)
+	}
+
+	timeout := 10
+	var errs []string
+	for _, c := range containers {
+		if err := d.cli.ContainerRestart(d.ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", c.Names[0], err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("errors restarting containers: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 func (d *DockerClient) ListImages() ([]Resource, error) {
@@ -424,6 +591,10 @@ func (d *DockerClient) Inspect(resourceType, id string) (string, error) {
 func (d *DockerClient) StopContainer(id string) error {
 	timeout := 10 // seconds
 	return d.cli.ContainerStop(d.ctx, id, container.StopOptions{Timeout: &timeout})
+}
+
+func (d *DockerClient) StartContainer(id string) error {
+	return d.cli.ContainerStart(d.ctx, id, container.StartOptions{})
 }
 
 func (d *DockerClient) RestartContainer(id string) error {
@@ -601,6 +772,12 @@ func parseStatus(s string) (status, age string) {
 			return
 		}
 		status = "Paused"
+		age = "-"
+	} else if strings.HasPrefix(s, "Exiting") { // Explicitly handle Exiting
+		status = "Exiting"
+		age = "-"
+	} else if strings.Contains(strings.ToLower(s), "starting") {
+		status = "Starting"
 		age = "-"
 	} else {
 		status = s
