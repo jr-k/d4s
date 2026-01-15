@@ -124,7 +124,8 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 	closeModal := func() {
 		pages.RemovePage("confirm")
 		// We assume we want to focus back on the table or pages
-		tviewApp.SetFocus(pages) 
+		tviewApp.SetFocus(pages)
+		app.UpdateShortcuts()
 	}
 
 	// Navigation helper
@@ -204,4 +205,5 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 	currentFocus = 0
 	updateCheckbox(true)
 	tviewApp.SetFocus(checkbox)
+	app.UpdateShortcuts()
 }

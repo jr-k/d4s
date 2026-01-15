@@ -113,7 +113,7 @@ func (i *StatsInspector) GetTitle() string {
 
 func (i *StatsInspector) GetShortcuts() []string {
 	shortcuts := []string{
-		common.FormatSCHeader("Esc", "Close"),
+		common.FormatSCHeader("esc", "Close"),
 	}
 	if i.Mode == "text" {
 		shortcuts = append(shortcuts, common.FormatSCHeader("c", "Copy"))

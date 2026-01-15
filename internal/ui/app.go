@@ -263,6 +263,7 @@ func (a *App) initUI() {
 			return nil
 		case '?':
 			a.Pages.AddPage("help", a.Help, true, true)
+			a.UpdateShortcuts()
 			return nil
 		case 'c': // Global Copy
 			a.PerformCopy()

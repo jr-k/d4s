@@ -71,6 +71,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 			app.GetPages().RemovePage("help")
 			// Restore focus
 			app.GetTviewApp().SetFocus(app.GetPages())
+			app.UpdateShortcuts()
 			return nil
 		}
 		return event

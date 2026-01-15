@@ -55,6 +55,7 @@ func ShowInput(app common.AppController, title, label, initialText string, onDon
 	closeModal := func() {
 		pages.RemovePage("input")
 		tviewApp.SetFocus(pages)
+		app.UpdateShortcuts()
 	}
 
 	input.SetDoneFunc(func(key tcell.Key) {
@@ -79,4 +80,5 @@ func ShowInput(app common.AppController, title, label, initialText string, onDon
 
 	pages.AddPage("input", modal, true, true)
 	tviewApp.SetFocus(input)
+	app.UpdateShortcuts()
 }

@@ -21,7 +21,7 @@ func Fetch(app common.AppController) ([]dao.Resource, error) {
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("d", "Describe"),
-		common.FormatSCHeader("Ctrl-d", "Delete"),
+		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
 

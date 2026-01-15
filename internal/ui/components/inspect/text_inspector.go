@@ -45,7 +45,7 @@ func (i *TextInspector) GetTitle() string {
 
 func (i *TextInspector) GetShortcuts() []string {
 	return []string{
-		common.FormatSCHeader("Esc", "Close"),
+		common.FormatSCHeader("esc", "Close"),
 		common.FormatSCHeader("c", "Copy"),
 		common.FormatSCHeader("/", "Search"),
 		common.FormatSCHeader("n/p", "Next/Prev"),

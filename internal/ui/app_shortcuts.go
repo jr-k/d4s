@@ -13,20 +13,6 @@ func (a *App) getCurrentShortcuts() []string {
 		if a.ActiveInspector != nil {
 			return a.ActiveInspector.GetShortcuts() // Use Inspector's shortcuts
 		}
-		return []string{
-			common.FormatSCHeader("c", "Copy"),
-			common.FormatSCHeader("Esc", "Close"),
-		}
-	}
-	if page == "logs" {
-		return []string{
-			common.FormatSCHeader("s", "AutoScroll"),
-			common.FormatSCHeader("w", "Wrap"),
-			common.FormatSCHeader("t", "Time"),
-			common.FormatSCHeader("c", "Copy"),
-			common.FormatSCHeader("shift+c", "Clear"),
-			common.FormatSCHeader("Esc", "Back"),
-		}
 	}
 
 	// Try to get view specific shortcuts
@@ -44,6 +30,7 @@ func (a *App) getCurrentShortcuts() []string {
 func (a *App) UpdateShortcuts() {
 	shortcuts := a.getCurrentShortcuts()
 	a.Header.UpdateShortcuts(shortcuts)
+	a.TviewApp.ForceDraw()
 }
 
 func (a *App) updateHeader() {

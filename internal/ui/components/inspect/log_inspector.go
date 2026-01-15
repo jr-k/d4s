@@ -122,7 +122,7 @@ func (i *LogInspector) GetShortcuts() []string {
 		common.FormatSCHeader("s", "Scroll"),
 		common.FormatSCHeader("w", "Wrap"),
 		common.FormatSCHeader("t", "Time"),
-		common.FormatSCHeader("C", "Clear"),
+		common.FormatSCHeader("shift-c", "Clear"),
 	)
 }
 

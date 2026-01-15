@@ -52,7 +52,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("a", "Add"),
 		common.FormatSCHeader("p", "Prune"),
-		common.FormatSCHeader("Ctrl-d", "Delete"),
+		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
 
