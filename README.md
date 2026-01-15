@@ -40,13 +40,24 @@ sudo mv d4s /usr/local/bin/
 go run cmd/d4s/main.go
 ```
 
+## Contributing
+
+There's still plenty to do! Take a look at the [contributing guide](CONTRIBUTING.md) to see how you can help.
+If you want to chat with other contributors about topics outside the GitHub repo, join us on Discord:
+
+<a href="https://discord.gg/tS2NCEJTUN"><img src='./docs/social/discord.png' width='75'></a>
+
+## Donate
+
+If you’d like to support the ongoing development of `d4s`, please consider [becoming a sponsor](https://github.com/sponsors/jr-k).
+
 ## 🍊 Our Mascotte `Citrus`
 
 <div align="left" width="100%">
     <img src="./docs/img/d4s-citrus.png" width="128 " alt="" />
 </div>
 
-Meet **Citrus**, our vitamin-packed helper ensuring your containers stay fresh and healthy! 🍊
+Meet ( •_•) **Citrus**, our vitamin-packed helper ensuring your containers stay fresh and healthy! 🍊
 
 ---
 *Built with Go & Tview. Inspired by the legendary K9s.*
