@@ -221,9 +221,9 @@ func (a *App) initUI() {
 	if event.Key() == tcell.KeyEsc {
 		// Priority 1: Clear active filter if any
 		if a.ActiveFilter != "" {
-			a.ActiveFilter = ""
+			a.SetActiveFilter("")
 			a.CmdLine.Reset()
-			a.RefreshCurrentView()
+			a.RefreshCurrentView() // Still trigger full refresh to be safe/consistent
 			a.Flash.SetText("")
 			return nil
 		}
@@ -323,6 +323,21 @@ func (a *App) SetActiveFilter(filter string) {
 		return
 	}
 	a.ActiveFilter = filter
+	
+	// Immediate Feedback: Refilter current view using cached data
+	page, _ := a.Pages.GetFrontPage()
+	if v, ok := a.Views[page]; ok && v != nil {
+		v.SetFilter(filter)
+		v.Refilter()
+		
+		// Optimistically update the title count
+		count := len(v.Data)
+		title := a.formatViewTitle(page, fmt.Sprintf("%d", count), filter)
+		a.updateViewTitle(v, title)
+		
+		// tview will automatically redraw after the event handler returns
+		// a.TviewApp.ForceDraw() - Removing as it crashes when called from event loop
+	}
 }
 
 func (a *App) SetCmdLineVisible(visible bool) {

@@ -200,20 +200,34 @@ func (c *CommandComponent) setupHandlers() {
 		if key == tcell.KeyEnter {
 			cmd := c.View.GetText()
 			if strings.HasPrefix(cmd, "/") {
+				// Search Mode
+				filter := ""
 				if len(cmd) > 1 {
-					filter := strings.TrimPrefix(cmd, "/")
-					c.App.SetActiveFilter(filter)
-					c.App.RefreshCurrentView()
-					
-					// Flash Message Context
-					msg := fmt.Sprintf("Filter: %s", filter)
+					filter = strings.TrimPrefix(cmd, "/")
+				}
+				
+				// Apply Filter (even if empty, to clear it)
+				c.App.SetActiveFilter(filter)
+				
+				// For non-inspector views, a full refresh is often triggered by SetActiveFilter internally 
+				// or explicitly here to fetch data if needed. 
+				// But SetActiveFilter now handles immediate UI update for tables.
+				// Still good to ensure consistent state.
+				c.App.RefreshCurrentView()
+				
+				// Flash Message Context
+				msg := ""
+				if filter != "" {
+					msg = fmt.Sprintf("Filter: %s", filter)
 					front, _ := c.App.GetPages().GetFrontPage()
 					if front == "inspect" {
 						msg = fmt.Sprintf("Search: %s", filter)
 					}
-					c.App.SetFlashText(msg)
 				}
+				c.App.SetFlashText(msg)
+
 			} else {
+				// Command Mode
 				c.App.ExecuteCmd(cmd)
 			}
 			

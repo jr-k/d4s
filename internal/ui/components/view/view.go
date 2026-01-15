@@ -17,7 +17,8 @@ type ResourceView struct {
 	Table    *tview.Table
 	App      common.AppController
 	Title    string
-	Data     []dao.Resource
+	Data     []dao.Resource // Filtered/Sorted Data for display
+	RawData  []dao.Resource // Original Data from last fetch
 	Filter   string // User Filter (via /)
 	SortCol  int
 	SortAsc  bool
@@ -204,9 +205,16 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 	return v
 }
 
+// Update triggers a refresh with new data
 func (v *ResourceView) Update(headers []string, data []dao.Resource) {
 	v.Headers = headers
 	v.ColCount = len(headers)
+	v.RawData = data
+	v.Refilter()
+}
+
+// Refilter re-applies filter and sort to cached RawData
+func (v *ResourceView) Refilter() {
 	if v.SortCol >= v.ColCount {
 		v.SortCol = 0
 	}
@@ -214,7 +222,8 @@ func (v *ResourceView) Update(headers []string, data []dao.Resource) {
 	// 1. Filter Data First
 	var filtered []dao.Resource
 	
-	for _, item := range data {
+	// Use cached RawData
+	for _, item := range v.RawData {
 		match := true
 		
 		cells := item.GetCells()
