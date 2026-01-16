@@ -11,7 +11,6 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 
 <a target="_blank" href="https://github.com/jr-k/d4s"><img src="https://img.shields.io/github/stars/jr-k/d4s?style=flat" /></a> 
 <a target="_blank" href="https://github.com/jr-k/d4s/pkgs/container/d4s"><img src="https://img.shields.io/badge/ghcr.io-d4s-blueviolet?logo=github" /></a> 
-<a target="_blank" href="https://github.com/jr-k/d4s/pkgs/container/d4s"><img src="https://img.shields.io/badge/version-latest-orange?logo=github" /></a> 
 <a target="_blank" href="https://github.com/jr-k/d4s"><img src="https://img.shields.io/github/last-commit/jr-k/d4s" /></a> 
 
 ## ✨ Features
