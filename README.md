@@ -59,15 +59,11 @@ Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) an
 
 ---
 
-### Windows (Scoop)
+### Scoop (Windows)
 ```powershell
 scoop bucket add d4s https://github.com/jr-k/scoop-d4s
 scoop install d4s
 ```
----
-
-### Windows (manual)
-> Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually. Don't forget to add `d4s.exe` to the `PATH`.
 
 ---
 
