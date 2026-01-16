@@ -14,6 +14,10 @@ import (
 var Headers = []string{"ID", "NAME", "DRIVER", "SCOPE"}
 
 func Fetch(app common.AppController) ([]dao.Resource, error) {
+	scope := app.GetActiveScope()
+	if scope != nil && scope.Type == "container" {
+		return app.GetDocker().ListNetworksForContainer(scope.Value)
+	}
 	return app.GetDocker().ListNetworks()
 }
 

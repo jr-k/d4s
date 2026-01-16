@@ -331,19 +331,21 @@ func (a *App) SetActiveFilter(filter string) {
 	a.ActiveFilter = filter
 	
 	// Immediate Feedback: Refilter current view using cached data
-	page, _ := a.Pages.GetFrontPage()
-	if v, ok := a.Views[page]; ok && v != nil {
-		v.SetFilter(filter)
-		v.Refilter()
-		
-		// Optimistically update the title count
-		count := len(v.Data)
-		title := a.formatViewTitle(page, fmt.Sprintf("%d", count), filter)
-		a.updateViewTitle(v, title)
-		
-		// tview will automatically redraw after the event handler returns
-		// a.TviewApp.ForceDraw() - Removing as it crashes when called from event loop
-	}
+	// We use async update to avoid blocking/crashing if Tview is busy
+	go func() {
+		a.TviewApp.QueueUpdateDraw(func() {
+			page, _ := a.Pages.GetFrontPage()
+			if v, ok := a.Views[page]; ok && v != nil {
+				v.SetFilter(filter)
+				v.Refilter()
+				
+				// Optimistically update the title count
+				count := len(v.Data)
+				title := a.formatViewTitle(page, fmt.Sprintf("%d", count), filter)
+				a.updateViewTitle(v, title)
+			}
+		})
+	}()
 }
 
 func (a *App) SetCmdLineVisible(visible bool) {

@@ -12,6 +12,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 var Headers = []string{"ID", "NAME", "IMAGE", "STATUS", "AGE", "PORTS", "CPU", "MEM", "COMPOSE", "CREATED"}
@@ -193,12 +194,14 @@ func Volumes(app common.AppController, v *view.ResourceView) {
 	if err != nil { return }
 	subject := resolveContainerSubject(v, id)
 
-	content, err := app.GetDocker().Inspect("container", id)
-	if err != nil {
-		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
-		return
-	}
-	app.OpenInspector(inspect.NewTextInspector("Volumes", subject, content, "json"))
+	app.SetActiveScope(&common.Scope{
+		Type:       "container",
+		Value:      id,
+		Label:      subject,
+		OriginView: styles.TitleContainers,
+	})
+
+	app.SwitchTo(styles.TitleVolumes)
 }
 
 func Networks(app common.AppController, v *view.ResourceView) {
@@ -206,12 +209,14 @@ func Networks(app common.AppController, v *view.ResourceView) {
 	if err != nil { return }
 	subject := resolveContainerSubject(v, id)
 
-	content, err := app.GetDocker().Inspect("container", id)
-	if err != nil {
-		app.SetFlashText(fmt.Sprintf("[red]Inspect Error: %v", err))
-		return
-	}
-	app.OpenInspector(inspect.NewTextInspector("Networks", subject, content, "json"))
+	app.SetActiveScope(&common.Scope{
+		Type:       "container",
+		Value:      id,
+		Label:      subject,
+		OriginView: styles.TitleContainers,
+	})
+
+	app.SwitchTo(styles.TitleNetworks)
 }
 
 func Logs(app common.AppController, v *view.ResourceView) {

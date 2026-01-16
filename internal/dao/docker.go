@@ -198,3 +198,65 @@ func (d *DockerClient) GetServiceLogs(id string, since string, tail string, time
 func (d *DockerClient) ListTasksForNode(nodeID string) ([]swarm.Task, error) {
 	return d.Node.ListTasks(nodeID)
 }
+
+func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, error) {
+	// Inspect container to get mounts
+	json, err := d.Cli.ContainerInspect(d.Ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	names := make(map[string]bool)
+	for _, m := range json.Mounts {
+		if m.Type == "volume" {
+			names[m.Name] = true
+		}
+	}
+	
+	// List all volumes and filter
+	all, err := d.Volume.List()
+	if err != nil {
+		return nil, err
+	}
+	
+	var filtered []common.Resource
+	for _, r := range all {
+		if v, ok := r.(volume.Volume); ok {
+			if names[v.Name] {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+	
+	return filtered, nil
+}
+
+func (d *DockerClient) ListNetworksForContainer(id string) ([]common.Resource, error) {
+	// Inspect container to get networks
+	json, err := d.Cli.ContainerInspect(d.Ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	
+	ids := make(map[string]bool)
+	for _, n := range json.NetworkSettings.Networks {
+		ids[n.NetworkID] = true
+	}
+	
+	// List all networks and filter
+	all, err := d.Network.List()
+	if err != nil {
+		return nil, err
+	}
+	
+	var filtered []common.Resource
+	for _, r := range all {
+		if n, ok := r.(network.Network); ok {
+			if ids[n.ID] {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+	
+	return filtered, nil
+}

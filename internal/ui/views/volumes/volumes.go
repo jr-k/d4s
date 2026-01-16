@@ -18,6 +18,10 @@ import (
 var Headers = []string{"NAME", "DRIVER", "MOUNTPOINT"}
 
 func Fetch(app common.AppController) ([]dao.Resource, error) {
+	scope := app.GetActiveScope()
+	if scope != nil && scope.Type == "container" {
+		return app.GetDocker().ListVolumesForContainer(scope.Value)
+	}
 	return app.GetDocker().ListVolumes()
 }
 

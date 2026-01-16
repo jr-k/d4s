@@ -53,7 +53,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	// Build CPU display with cores and percentage
 	cpuDisplay := fmt.Sprintf("%s cores", stats.CPU)
 	if stats.CPUPercent != "" && stats.CPUPercent != "N/A" && stats.CPUPercent != "..." {
-		cpuDisplay += fmt.Sprintf(" (%s)", stats.CPUPercent)
+		cpuDisplay += fmt.Sprintf(" ([grey]%s[-])", stats.CPUPercent)
 	} else if stats.CPUPercent == "..." {
 		cpuDisplay += " [dim](...)"
 	}
@@ -61,7 +61,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	// Build Mem display with total and percentage
 	memDisplay := stats.Mem
 	if stats.MemPercent != "" && stats.MemPercent != "N/A" && stats.MemPercent != "..." {
-		memDisplay += fmt.Sprintf(" (%s)", stats.MemPercent)
+		memDisplay += fmt.Sprintf(" ([grey]%s[-]L)", stats.MemPercent)
 	} else if stats.MemPercent == "..." {
 		memDisplay += " [dim](...)"
 	}

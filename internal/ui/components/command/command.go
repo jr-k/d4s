@@ -209,12 +209,6 @@ func (c *CommandComponent) setupHandlers() {
 				// Apply Filter (even if empty, to clear it)
 				c.App.SetActiveFilter(filter)
 				
-				// For non-inspector views, a full refresh is often triggered by SetActiveFilter internally 
-				// or explicitly here to fetch data if needed. 
-				// But SetActiveFilter now handles immediate UI update for tables.
-				// Still good to ensure consistent state.
-				c.App.RefreshCurrentView()
-				
 				// Flash Message Context
 				msg := ""
 				if filter != "" {

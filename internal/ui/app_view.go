@@ -15,8 +15,6 @@ func (a *App) RefreshCurrentView() {
 	
 	// Handle Inspector Filtering
 	if page == "inspect" {
-		// Inspector handles its own state/refresh via internal timers or input handlers.
-		// We do NOT apply the global ActiveFilter here as it separates Search vs Filter contexts.
 		return
 	}
 
@@ -32,13 +30,11 @@ func (a *App) RefreshCurrentView() {
 	
 	filter := a.ActiveFilter
 
-	// 1. Immediate Updates (Optimistic UI)
+	// 1. Immediate Updates (Optimistic UI) - Inside Queue not needed if Ticker calls this?
+	// Ticker runs in BG. `UpdateShortcuts` accesses UI. Should be queued.
+	// But let's revert to "working but racy" to fix the "broken views" regression first.
 	a.UpdateShortcuts()
 	
-	// Show optimistic title
-	title := a.formatViewTitle(page, "...", filter)
-	a.updateViewTitle(v, title)
-
 	go func() {
 		var err error
 		var data []dao.Resource
@@ -50,6 +46,12 @@ func (a *App) RefreshCurrentView() {
 		}
 
 		a.TviewApp.QueueUpdateDraw(func() {
+			// Check if page changed while fetching?
+			currentPage, _ := a.Pages.GetFrontPage()
+			if currentPage != page {
+				return
+			}
+			
 			v.SetFilter(filter)
 
 			if err != nil {
@@ -61,6 +63,7 @@ func (a *App) RefreshCurrentView() {
 				
 				v.Update(headers, data)
 				
+				// Only update flash if not error
 				status := fmt.Sprintf("[black:blue] <%s> [-]", strings.ToLower(page))
 				if filter != "" {
 					status += fmt.Sprintf(`[black:orange] <filter: %s> [-]`, filter)
