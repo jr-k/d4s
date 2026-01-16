@@ -18,6 +18,17 @@ builds:
     goarch:
       - amd64
       - arm64
+      - "386"
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+
     ldflags:
       - -s -w
       - -X github.com/jr-k/d4s/internal/buildinfo.Version={{.Version}}
@@ -43,7 +54,7 @@ dockers_v2:
 
 archives:
   - id: default
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ if eq .Arch \"386\" }}x86{{ else }}{{ .Arch }}{{ end }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     files:
       - LICENSE*
       - README*

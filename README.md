@@ -25,42 +25,48 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 
 ## 🚀 Installation
 
-### macOS / Linux (Homebrew)
+### + macOS / Linux (Homebrew)
 ```bash
 brew tap jr-k/d4s
 brew install d4s
 ```
 
-### macOS / Linux (curl)
-```bash
-curl -fsSL https://d4scli.io/install.sh | sh
-```
-
-### Docker
+### + Docker
 ```bash
 docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest
 ```
 
-### Linux (deb / rpm)
-> Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually.
+**You might want to create an alias for quicker usage. For example:**
+
 ```bash
-# Debian / Ubuntu
-sudo dpkg -i d4s_*.deb
-
-# Fedora / RHEL
-sudo rpm -i d4s_*.rpm
+echo "alias d4s='docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest'" >> ~/.zshrc
 ```
+*After running this, either restart your terminal or run `source ~/.zshrc` (or `source ~/.bashrc` for Bash) to enable the alias.*
 
-### Windows (Scoop)
+
+### + Binary Releases (Linux / MacOS / Windows)
+
+
+> Automated
+```bash
+curl -fsSL https://d4scli.io/install.sh | sh
+```
+*The script installs downloaded binary to `$HOME/.local/bin` directory by default, but it can be changed by setting DIR environment variable.*
+
+> Manual
+
+Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually.
+
+### + Windows (Scoop)
 ```powershell
 scoop bucket add d4s https://github.com/jr-k/scoop-d4s
 scoop install d4s
 ```
 
-### Windows (manuel)
+### + Windows (manual)
 > Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually. Don't forget to add `d4s.exe` to the `PATH`.
 
-### From Source
+### + From Source
 >Requirement: Go 1.21+
 ```bash
 git clone https://github.com/jr-k/d4s.git
@@ -102,7 +108,7 @@ There's still plenty to do! Take a look at the [contributing guide](CONTRIBUTING
 
 If you’d like to support the ongoing development of `d4s`, please consider [becoming a sponsor](https://github.com/sponsors/jr-k).
 
-## 🍊 Our Mascotte `Citrus`
+## 🍊 Our Mascot `Citrus`
 
 <div align="left" width="100%">
     <img src="./docs/img/d4s-citrus.png" width="128 " alt="" />
