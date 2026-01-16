@@ -45,7 +45,17 @@ func (a *App) ExecuteCmd(cmd string) {
 }
 
 func (a *App) SwitchTo(viewName string) {
-	if _, ok := a.Views[viewName]; ok {
+	a.SwitchToWithSelection(viewName, true)
+}
+
+func (a *App) SwitchToWithSelection(viewName string, reset bool) {
+	if v, ok := a.Views[viewName]; ok {
+		// Reset Selection to top when EXPLICITLY requested (default behavior for navigation)
+		if reset && v.Table.GetRowCount() > 1 {
+			v.Table.Select(1, 0)
+			v.Table.ScrollToBeginning()
+		}
+
 		a.Pages.SwitchToPage(viewName)
 		a.ActiveFilter = "" // Reset filter on view switch
 		
@@ -55,9 +65,8 @@ func (a *App) SwitchTo(viewName string) {
 		go a.RefreshCurrentView()
 		a.updateHeader()
 		a.TviewApp.SetFocus(a.Pages) // Usually focus page, but actually table
-		if v, ok := a.Views[viewName]; ok {
-			a.TviewApp.SetFocus(v.Table)
-		}
+		
+		a.TviewApp.SetFocus(v.Table)
 	} else {
 		a.Flash.SetText(fmt.Sprintf("[red]Unknown view: %s", viewName))
 	}

@@ -15,41 +15,49 @@ func NewHelpView(app common.AppController) tview.Primitive {
 	// Format: Col1 | Col2
 	rows := [][]string{
 		{"[orange::b]GLOBAL", ""},
-		{"[#5f87ff]:[-]             Command", "[#5f87ff]?[-]             Help"},
-		{"[#5f87ff]/[-]             Filter", "[#5f87ff]esc[-]           Back/Clear"},
-		{"[#5f87ff]c[-]             Copy", "[#5f87ff]u[-]             Unselect All"},
+		{"[#5f87ff]:[-]         Command", "[#5f87ff]?[-]         Help"},
+		{"[#5f87ff]/[-]         Filter", "[#5f87ff]esc[-]       Back/Clear"},
+		{"[#5f87ff]c[-]         Copy", "[#5f87ff]u[-]         Unselect All"},
 		{"", ""},
 		{"[orange::b]DOCKER", ""},
-		{"[#5f87ff]:c[-]            Containers", "[#5f87ff]:i[-]            Images"},
-		{"[#5f87ff]:v[-]            Volumes", "[#5f87ff]:n[-]            Networks"},
-		{"[#5f87ff]:p[-]            Compose", ""},
+		{"[#5f87ff]:c[-]        Containers", "[#5f87ff]:i[-]        Images"},
+		{"[#5f87ff]:v[-]        Volumes", "[#5f87ff]:n[-]        Networks"},
+		{"[#5f87ff]:p[-]        Compose", ""},
 		{"", ""},
 		{"[orange::b]SWARM", ""},
-		{"[#5f87ff]:s[-]            Services", "[#5f87ff]:no[-]           Nodes"},
+		{"[#5f87ff]:s[-]        Services", "[#5f87ff]:no[-]       Nodes"},
 		{"", ""},
 		{"[orange::b]NAVIGATION", ""},
-		{"[#5f87ff]←/→[-], [#5f87ff]j/k[-]      Navigate", "[#5f87ff]enter[-]         Drill Down"},
-		{"[#5f87ff]shift ←/→[-]     Sort Column", "[#5f87ff]shift ↑/↓[-]     Toggle Order"},
+		{"[#5f87ff]←/→[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]enter[-]       Drill Down"},
+		{"[#5f87ff]shift ←/→[-] Sort Column", "[#5f87ff]shift ↑/↓[-] Toggle Order"},
 	}
 
 	for i, row := range rows {
-		for j := 0; j < 2; j++ {
-			text := ""
-			if j < len(row) {
-				text = row[j]
-			}
+		// Column 1
+		text1 := row[0]
+		cell1 := tview.NewTableCell(text1).
+			SetTextColor(tcell.ColorWhite).
+			SetAlign(tview.AlignLeft).
+			SetExpansion(1)
+		helpTable.SetCell(i, 0, cell1)
 
-			cell := tview.NewTableCell(text).
-				SetTextColor(tcell.ColorWhite).
-				SetAlign(tview.AlignLeft).
-				SetExpansion(1)
+		// Spacer Column
+		helpTable.SetCell(i, 1, tview.NewTableCell("    ").SetSelectable(false))
 
-			helpTable.SetCell(i, j, cell)
+		// Column 2
+		text2 := ""
+		if len(row) > 1 {
+			text2 = row[1]
 		}
+		cell2 := tview.NewTableCell(text2).
+			SetTextColor(tcell.ColorWhite).
+			SetAlign(tview.AlignLeft).
+			SetExpansion(1)
+		helpTable.SetCell(i, 2, cell2)
 	}
 
 	helpBox := tview.NewFrame(helpTable).
-		SetBorders(1, 1, 1, 1, 0, 0).
+		SetBorders(1, 1, 1, 1, 4, 4).
 		AddText(" Help ", true, tview.AlignCenter, styles.ColorTitle)
 	helpBox.SetBorder(true).SetBorderColor(styles.ColorTitle).SetBackgroundColor(tcell.ColorBlack)
 

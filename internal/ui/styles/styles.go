@@ -30,7 +30,6 @@ var (
 	// Table
 	ColorSelectBg    = tcell.NewRGBColor(68, 71, 90)    // Selection Gray
 	ColorSelectFg    = tcell.ColorWhite
-	ColorKey         = tcell.NewRGBColor(136, 192, 208) // Nord Cyan (Legacy) -> Use HeaderFg
 	ColorValue       = tcell.ColorWhite
 	
 	// Added for compatibility with view.go
@@ -48,7 +47,7 @@ var (
 	// Rows Status
 	ColorStatusGreen = tcell.NewRGBColor(80, 250, 123)  // Green
 	ColorStatusRed   = tcell.NewRGBColor(255, 85, 85)   // Red
-	ColorStatusGray  = tcell.NewRGBColor(98, 114, 164)  // Gray/Purple
+	ColorStatusGray  = tcell.NewRGBColor(119, 136, 153)  // Gray
 	ColorStatusYellow = tcell.NewRGBColor(241, 250, 140) // Yellow
 	ColorStatusOrange = tcell.NewRGBColor(255, 140, 3) // Orange
 	ColorStatusBlue = tcell.NewRGBColor(1, 123, 255)  // Blue (lighter)
@@ -56,14 +55,11 @@ var (
 
 	ColorStatusRedDarkBg = tcell.NewRGBColor(46, 30, 30) // Red
 	ColorStatusGreenDarkBg = tcell.NewRGBColor(32, 46, 30)  // Green
-	ColorStatusGrayDarkBg   = tcell.NewRGBColor(60, 64, 90)    // Darker Gray/Purple
+	ColorStatusGrayDarkBg   = tcell.NewRGBColor(60, 64, 90)    // Darker Gray/Bluish
 	ColorStatusYellowDarkBg = tcell.NewRGBColor(46, 46, 30)  // Darker Yellow
 	ColorStatusOrangeDarkBg = tcell.NewRGBColor(46, 39, 30)   // Darker Orange/Brown
 	ColorStatusBlueDarkBg   = tcell.NewRGBColor(30, 37, 46)    // Darker Blue
 	ColorStatusPurpleDarkBg = tcell.NewRGBColor(38, 30, 46)    // Darker Purple
-
-	// Others
-	ColorBrown = tcell.NewRGBColor(80, 50, 30) // Brown
 )
 
 const (

@@ -35,7 +35,6 @@ type App struct {
 	Pages   *tview.Pages
 	CmdLine *command.CommandComponent
 	Flash   *footer.FlashComponent
-	// Footer  *footer.FooterComponent // Legacy?
 	Help tview.Primitive
 
 	// Views
@@ -237,7 +236,7 @@ func (a *App) initUI() {
 			if a.ActiveScope != nil {
 				origin := a.ActiveScope.OriginView
 				a.ActiveScope = nil
-				a.SwitchTo(origin)
+				a.SwitchToWithSelection(origin, false)
 				return nil
 			}
 

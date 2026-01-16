@@ -169,61 +169,6 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 		}
 
-		// Context specific shortcuts
-		if v.Title == styles.TitleCompose && event.Key() == tcell.KeyEnter {
-			row, _ := tv.GetSelection()
-			if row > 0 && row <= len(v.Data) {
-				res := v.Data[row-1]
-				projName := res.GetID()
-
-				// Try to get config file path
-				label := projName
-				if cp, ok := res.(dao.ComposeProject); ok {
-					if cp.ConfigFiles != "" {
-						label = cp.ConfigFiles
-					}
-				}
-
-				// Set Scope
-				v.App.SetActiveScope(&common.Scope{
-					Type:       "compose",
-					Value:      projName,
-					Label:      label,
-					OriginView: styles.TitleCompose,
-				})
-
-				// Switch to Containers
-				v.App.SwitchTo(styles.TitleContainers)
-				return nil
-			}
-		}
-
-		if v.Title == styles.TitleNodes && event.Key() == tcell.KeyEnter {
-			row, _ := tv.GetSelection()
-			if row > 0 && row <= len(v.Data) {
-				res := v.Data[row-1]
-				nodeID := res.GetID()
-
-				// Get Node Hostname for Label
-				label := nodeID
-				if cells := res.GetCells(); len(cells) > 1 {
-					label = cells[1] // Assuming Name/Hostname is 2nd column
-				}
-
-				// Set Scope
-				v.App.SetActiveScope(&common.Scope{
-					Type:       "node",
-					Value:      nodeID,
-					Label:      label,
-					OriginView: styles.TitleNodes,
-				})
-
-				// Switch to Services
-				v.App.SwitchTo(styles.TitleServices)
-				return nil
-			}
-		}
-
 		// Delegate to view specific input handler
 		if v.InputHandler != nil {
 			result := v.InputHandler(event)
@@ -344,13 +289,8 @@ func (v *ResourceView) renderAll() {
 		}
 
 		// Align Right for numeric columns
-		headerName := strings.ToUpper(h)
-		if headerName == "SIZE" || headerName == "REPLICAS" || headerName == "CPU" || headerName == "CONTAINERS" {
+		if isNumericColumn(h) {
 			cell.SetAlign(tview.AlignRight)
-		}
-
-		if headerName == "MEM" {
-			cell.SetAlign(tview.AlignCenter)
 		}
 
 		v.Table.SetCell(0, i, cell)
@@ -367,8 +307,7 @@ func (v *ResourceView) renderAll() {
 
 			// Align right for numeric columns (data)
 			if j < len(v.Headers) {
-				headerName := strings.ToUpper(v.Headers[j])
-				if headerName == "SIZE" || headerName == "REPLICAS" || headerName == "CPU" || headerName == "MEM" || headerName == "CONTAINERS" {
+				if isNumericColumn(v.Headers[j]) {
 					cell.SetAlign(tview.AlignRight)
 				}
 			}
@@ -380,15 +319,24 @@ func (v *ResourceView) renderAll() {
 	// Scroll/Selection Logic
 	rowCount := v.Table.GetRowCount()
 	if rowCount > 1 {
+		// Only reset selection to top if we have rows AND we are invalidly positioned
+		// OR current selection is 0 (header) which shouldn't happen for resource view
 		row, _ := v.Table.GetSelection()
 		if row <= 0 || row >= rowCount {
 			v.Table.Select(1, 0)
 		}
+		// If valid row is selected, let it stay selected (default Tview behavior)
 	} else {
+		// No data rows
 		v.Table.Select(0, 0)
 	}
 
 	v.refreshStyles()
+}
+
+func isNumericColumn(name string) bool {
+	n := strings.ToUpper(name)
+	return n == "SIZE" || n == "REPLICAS" || n == "CPU" || n == "MEM" || n == "CONTAINERS"
 }
 
 func (v *ResourceView) SetActionState(id, action string, color tcell.Color) {

@@ -52,7 +52,7 @@ func (s Service) GetStatusColor() (tcell.Color, tcell.Color) {
 			if desired == 0 && running == 0 {
 				return styles.ColorStatusGray, tcell.ColorBlack
 			} else if running < desired {
-				return styles.ColorStatusRed, tcell.ColorBlack
+				return styles.ColorStatusOrange, tcell.ColorBlack
 			} else if running > desired {
 				return tcell.ColorMediumPurple, tcell.ColorBlack
 			} else if desired > 0 {

@@ -87,7 +87,7 @@ func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 	case "restarting":
 		return styles.ColorStatusOrange, tcell.ColorBlack
 	case "exited", "dead":
-		return styles.ColorStatusRed, tcell.ColorBlack
+		return styles.ColorStatusGray, tcell.ColorBlack
 	case "created":
 		return styles.ColorStatusBlue, tcell.ColorBlack
 	}
