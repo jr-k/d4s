@@ -50,6 +50,27 @@ type App struct {
 var _ common.AppController = (*App)(nil)
 
 func NewApp() *App {
+	// Configure global tview borders (Normal)
+	tview.Borders.TopLeft = '┌'
+	tview.Borders.TopRight = '┐'
+	tview.Borders.BottomLeft = '└'
+	tview.Borders.BottomRight = '┘'
+	tview.Borders.Horizontal = '─'
+	tview.Borders.Vertical = '│'
+	tview.Borders.LeftT = '├'
+	tview.Borders.RightT = '┤'
+	tview.Borders.TopT = '┬'
+	tview.Borders.BottomT = '┴'
+	tview.Borders.Cross = '┼'
+
+	// Focused borders (same style)
+	tview.Borders.TopLeftFocus = '┌'
+	tview.Borders.TopRightFocus = '┐'
+	tview.Borders.BottomLeftFocus = '└'
+	tview.Borders.BottomRightFocus = '┘'
+	tview.Borders.HorizontalFocus = '─'
+	tview.Borders.VerticalFocus = '│'
+
 	docker, err := dao.NewDockerClient()
 	if err != nil {
 		panic(err)
@@ -198,10 +219,10 @@ func (a *App) initUI() {
 	a.Layout = tview.NewFlex().SetDirection(tview.FlexRow)
 	a.Layout.SetBackgroundColor(styles.ColorBg)
 
-	a.Layout.AddItem(a.Header.View, 6, 1, false).
+	a.Layout.AddItem(a.Header.View, 7, 1, false).
 		AddItem(a.CmdLine.View, 0, 0, false). // Hidden by default (size 0, proportion 0)
 		AddItem(a.Pages, 0, 1, true).
-		AddItem(a.Flash.View, 1, 1, false)
+		AddItem(a.Flash.View, 2, 1, false)
 		// AddItem(a.Footer.View, 1, 1, false)
 
 	// Global Shortcuts

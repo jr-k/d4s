@@ -7,13 +7,13 @@ var (
 	// Main Background (Indigo/Dark Blue)
 	ColorBg          = tcell.NewRGBColor(0,0,0) // Dark Indigo
 	ColorFg          = tcell.ColorWhite
-	ColorTableBorder = tcell.NewRGBColor(0, 255, 255) // Cyan
+	ColorTableBorder = tcell.NewRGBColor(137, 206, 250) // Blue
 
 	ColorBlack = tcell.NewRGBColor(0,0,0)
 	ColorWhite = tcell.NewRGBColor(255, 255, 255)
 
 	ColorHeader = tcell.NewRGBColor(255, 255, 255) // White
-	ColorHeaderSort = tcell.NewRGBColor(0, 255, 255) // Blue
+	ColorHeaderSort = tcell.NewRGBColor(137, 206, 250) // Blue
 
 	// Header
 	ColorTitle       = tcell.NewRGBColor(189, 147, 249) // Purple

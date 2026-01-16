@@ -16,6 +16,7 @@ func printColored(format string, a ...interface{}) {
 	// Mapping from [orange] etc to their respective truecolor ANSI sequences
 	colorMap := map[string]string{
 		"[#ffb86c]": "\x1b[38;2;255;184;108m",
+		"[#ff8c00]": "\x1b[38;2;255;140;3m",
 		"[orange]":  "\x1b[38;2;255;184;108m",
 		"[cyan]":    "\x1b[38;2;57;166;255m",
 		"[white]":   "\x1b[38;2;255;255;255m",

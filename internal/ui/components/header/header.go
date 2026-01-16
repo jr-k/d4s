@@ -94,6 +94,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 		fmt.Sprintf("[orange]Engine:  [white]%s [dim](%s)", stats.Name, stats.Version),
 		fmt.Sprintf("[orange]CPU:     [white]%s", cpuDisplay),
 		fmt.Sprintf("[orange]Mem:     [white]%s", memDisplay),
+		"",
 	}
 
 	statsWidth := 0
@@ -125,9 +126,9 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	logoWidth += 2 // Padding
 
 	// 3. Shortcuts View
-	// Max 6 per column (matches header height)
+	// Max 7 per column (matches header height)
 	// Each shortcut uses 2 columns: alias (fixed width) and label
-	const maxPerCol = 6
+	const maxPerCol = 7
 	const groupSpacer = "      " // Spacer between shortcut groups
 
 	// Organize shortcuts into columns, respecting color changes
