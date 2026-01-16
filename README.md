@@ -16,11 +16,11 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 
 ## 📸 Screenshots
 <div align="left" width="100%">
-    <img src="./docs/img/screen1.png" width="100%" alt="" style="border: 1px solid black; outline: 1px solid black;" />
+    <img src="./docs/img/screen1.png" width="100%" alt="" />
 </div>
 <br />
 <div align="left" width="100%">
-    <img src="./docs/img/screen2.png" width="100%" alt="" style="border: 1px solid black; outline: 1px solid black;" />
+    <img src="./docs/img/screen2.png" width="100%" alt="" />
 </div>
 
 ## ✨ Features
