@@ -1,0 +1,76 @@
+project_name: d4s
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: d4s
+    main: ./cmd/d4s
+    binary: d4s
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/jr-k/d4s/internal/buildinfo.Version={{.Version}}
+      - -X github.com/jr-k/d4s/internal/buildinfo.Commit={{.Commit}}
+      - -X github.com/jr-k/d4s/internal/buildinfo.Date={{.Date}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE*
+      - README*
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: jr-k
+    name: d4s
+
+brews:
+  - name: d4s
+    repository:
+      owner: jr-k
+      name: homebrew-d4s
+    homepage: "https://d4scli.io"
+    description: "Master Docker like a pro, right from your terminal"
+    license: "Apache-2.0"
+    install: |
+      bin.install "d4s"
+
+nfpms:
+  - id: d4s
+    package_name: d4s
+    maintainer: "jr-k <jrk@jierka.com>"
+    description: "Master Docker like a pro, right from your terminal"
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+
+scoops:
+  - name: d4s
+    repository:
+      owner: jr-k
+      name: scoop-d4s
+    homepage: https://d4scli.io
+    description: "Master Docker like a pro, right from your terminal"
+    license: Apache-2.0
+    commit_author:
+      name: GoReleaser Bot
+      email: bot@goreleaser.com
