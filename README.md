@@ -5,10 +5,9 @@
 
 # D-Force (d4s) 🍊
 
-> **The K9s experience for Docker.**  
-> Manage your Docker Swarm, Compose stacks, and Containers with a fancy, fast, and keyboard-centric Terminal User Interface.
-
 D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local Docker ecosystem. Stop wrestling with verbose CLI commands and start managing your containers like a pro.
+
+> Manage your Docker Swarm, Compose stacks, and Containers with a fancy, fast, and keyboard-centric Terminal User Interface.
 
 ## ✨ Features
 
