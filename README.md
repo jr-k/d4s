@@ -25,9 +25,43 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 
 ## 🚀 Installation
 
-### From Source
-Requirement: Go 1.21+
+### macOS / Linux (Homebrew)
+```bash
+brew tap jr-k/d4s
+brew install d4s
+```
 
+### macOS / Linux (curl)
+```bash
+curl -fsSL https://d4scli.io/install.sh | sh
+```
+
+### Docker
+```bash
+docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest
+```
+
+### Linux (deb / rpm)
+> Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually.
+```bash
+# Debian / Ubuntu
+sudo dpkg -i d4s_*.deb
+
+# Fedora / RHEL
+sudo rpm -i d4s_*.rpm
+```
+
+### Windows (Scoop)
+```powershell
+scoop bucket add d4s https://github.com/jr-k/scoop-d4s
+scoop install d4s
+```
+
+### Windows (manuel)
+> Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually. Don't forget to add `d4s.exe` to the `PATH`.
+
+### From Source
+>Requirement: Go 1.21+
 ```bash
 git clone https://github.com/jr-k/d4s.git
 cd d4s
@@ -35,10 +69,22 @@ go build -o d4s cmd/d4s/main.go
 sudo mv d4s /usr/local/bin/
 ```
 
-### Quick Run
 ```bash
+# Make the binary accessible then run it
+sudo mv d4s /usr/local/bin/
+d4s
+
+# Quickly run from source
 go run cmd/d4s/main.go
 ```
+---
+
+## 🤷‍♂️ Usage
+```bash
+d4s
+d4s version
+```
+
 
 ## 💪 Contributing
 
