@@ -1,0 +1,7 @@
+FROM scratch
+
+ARG TARGETARCH
+COPY linux/${TARGETARCH}/d4s /d4s
+
+ENV TERM=xterm-256color
+ENTRYPOINT ["/d4s"]
