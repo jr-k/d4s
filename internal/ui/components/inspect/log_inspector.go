@@ -341,12 +341,18 @@ func (i *LogInspector) startStreaming() {
 			i.App.GetTviewApp().QueueUpdateDraw(func() {
 				if firstWrite {
 					i.TextView.Clear()
-					firstWrite = false
 				}
 				// We append to the existing text
 				// tview.TextView is an io.Writer
 				w := i.TextView
 				fmt.Fprint(w, text)
+
+				if firstWrite {
+					if !i.AutoScroll {
+						i.TextView.ScrollToBeginning()
+					}
+					firstWrite = false
+				}
 			})
 		}
 
