@@ -51,7 +51,7 @@ func Inspect(app common.AppController, id string) {
 
 func GetShortcuts() []string {
 	return []string{
-		common.FormatSCHeader("Enter", "Containers"),
+		common.FormatSCHeader("enter", "Containers"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
