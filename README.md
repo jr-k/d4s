@@ -72,12 +72,12 @@ scoop install d4s
 git clone https://github.com/jr-k/d4s.git
 cd d4s
 go build -o d4s cmd/d4s/main.go
-sudo mv d4s /usr/local/bin/
+sudo mv d4s ~/.local/bin/
 ```
 
 ```bash
 # Make the binary accessible then run it
-sudo mv d4s /usr/local/bin/
+mv d4s ~/.local/bin/
 d4s
 
 # Quickly run from source
