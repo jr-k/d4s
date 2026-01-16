@@ -2,6 +2,7 @@ package networks
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
@@ -9,6 +10,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 var Headers = []string{"ID", "NAME", "DRIVER", "SCOPE", "CREATED", "INTERNAL", "SUBNET"}
@@ -99,7 +101,9 @@ func PruneAction(app common.AppController) {
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	label := ids[0]
 	if len(ids) > 1 {
@@ -132,6 +136,10 @@ func Create(app common.AppController) {
 					app.SetFlashText(fmt.Sprintf("[red]Error creating network: %v", err))
 				} else {
 					app.SetFlashText(fmt.Sprintf("[green]Network %s created", text))
+					app.ScheduleViewHighlight(styles.TitleNetworks, func(res dao.Resource) bool {
+						net, ok := res.(dao.Network)
+						return ok && net.Name == text
+					}, styles.ColorStatusGreen, styles.ColorStatusGreenDarkBg, time.Second)
 					app.RefreshCurrentView()
 				}
 			})

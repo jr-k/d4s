@@ -36,11 +36,11 @@ type App struct {
 	CmdLine *command.CommandComponent
 	Flash   *footer.FlashComponent
 	// Footer  *footer.FooterComponent // Legacy?
-	Help    tview.Primitive
+	Help tview.Primitive
 
 	// Views
 	Views map[string]*view.ResourceView
-	
+
 	// State
 	ActiveFilter    string
 	ActiveScope     *common.Scope
@@ -80,7 +80,7 @@ func (a *App) Run() error {
 		time.Sleep(100 * time.Millisecond)
 		a.RefreshCurrentView()
 		a.updateHeader()
-		
+
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -95,7 +95,7 @@ func (a *App) Run() error {
 func (a *App) initUI() {
 	// 1. Header
 	a.Header = header.NewHeaderComponent()
-	
+
 	// 2. Main Content
 	// Containers
 	vContainers := view.NewResourceView(a, styles.TitleContainers)
@@ -188,7 +188,7 @@ func (a *App) initUI() {
 
 	// 3. Command Line & Flash & Footer
 	a.CmdLine = command.NewCommandComponent(a)
-	
+
 	a.Flash = footer.NewFlashComponent()
 	// a.Footer = footer.NewFooterComponent()
 
@@ -210,51 +210,51 @@ func (a *App) initUI() {
 		if a.CmdLine.HasFocus() {
 			return event
 		}
-		
+
 		// Helper to route input to Active Inspector
 		if a.ActiveInspector != nil {
 			return a.ActiveInspector.InputHandler(event)
 		}
 
-	// Don't intercept global keys if an input modal is open
-	frontPage, _ := a.Pages.GetFrontPage()
-	if frontPage == "input" || frontPage == "confirm" {
-		return event
-	}
-
-	// Handle Esc to clear filter and exit scope
-	if event.Key() == tcell.KeyEsc {
-		// Priority 1: Clear active filter if any
-		if a.ActiveFilter != "" {
-			a.SetActiveFilter("")
-			a.CmdLine.Reset()
-			a.RefreshCurrentView() // Still trigger full refresh to be safe/consistent
-			a.Flash.SetText("")
-			return nil
+		// Don't intercept global keys if an input modal is open
+		frontPage, _ := a.Pages.GetFrontPage()
+		if frontPage == "input" || frontPage == "confirm" {
+			return event
 		}
-		
-		// Priority 2: Exit scope if active (return to origin view)
-		if a.ActiveScope != nil {
-			origin := a.ActiveScope.OriginView
-			a.ActiveScope = nil
-			a.SwitchTo(origin)
-			return nil
-		}
-		
-		return event
-	}
 
-	// Delegate to Active View Input Handler
-	if view, ok := a.Views[frontPage]; ok {
-		if view.InputHandler != nil {
-			// If handler returns nil, event was handled
-			if ret := view.InputHandler(event); ret == nil {
+		// Handle Esc to clear filter and exit scope
+		if event.Key() == tcell.KeyEsc {
+			// Priority 1: Clear active filter if any
+			if a.ActiveFilter != "" {
+				a.SetActiveFilter("")
+				a.CmdLine.Reset()
+				a.RefreshCurrentView() // Still trigger full refresh to be safe/consistent
+				a.Flash.SetText("")
 				return nil
 			}
-		}
-	}
 
-	switch event.Rune() {
+			// Priority 2: Exit scope if active (return to origin view)
+			if a.ActiveScope != nil {
+				origin := a.ActiveScope.OriginView
+				a.ActiveScope = nil
+				a.SwitchTo(origin)
+				return nil
+			}
+
+			return event
+		}
+
+		// Delegate to Active View Input Handler
+		if view, ok := a.Views[frontPage]; ok {
+			if view.InputHandler != nil {
+				// If handler returns nil, event was handled
+				if ret := view.InputHandler(event); ret == nil {
+					return nil
+				}
+			}
+		}
+
+		switch event.Rune() {
 		case ':':
 			a.ActivateCmd(":")
 			return nil
@@ -269,7 +269,7 @@ func (a *App) initUI() {
 			a.PerformCopy()
 			return nil
 		}
-		
+
 		return event
 	})
 
@@ -329,7 +329,7 @@ func (a *App) SetActiveFilter(filter string) {
 		return
 	}
 	a.ActiveFilter = filter
-	
+
 	// Immediate Feedback: Refilter current view using cached data
 	// We use async update to avoid blocking/crashing if Tview is busy
 	go func() {
@@ -338,7 +338,7 @@ func (a *App) SetActiveFilter(filter string) {
 			if v, ok := a.Views[page]; ok && v != nil {
 				v.SetFilter(filter)
 				v.Refilter()
-				
+
 				// Optimistically update the title count
 				count := len(v.Data)
 				title := a.formatViewTitle(page, fmt.Sprintf("%d", count), filter)
@@ -357,14 +357,23 @@ func (a *App) SetCmdLineVisible(visible bool) {
 	a.Layout.ResizeItem(a.CmdLine.View, size, 0)
 }
 
+func (a *App) ScheduleViewHighlight(viewName string, match func(dao.Resource) bool, bg, fg tcell.Color, duration time.Duration) {
+	if match == nil || duration <= 0 {
+		return
+	}
+	if v, ok := a.Views[viewName]; ok && v != nil {
+		v.ScheduleHighlight(match, bg, fg, duration)
+	}
+}
+
 func (a *App) OpenInspector(inspector common.Inspector) {
 	if a.ActiveInspector != nil {
 		a.CloseInspector()
 	}
-	
+
 	a.ActiveInspector = inspector
 	inspector.OnMount(a)
-	
+
 	a.Pages.AddPage("inspect", inspector.GetPrimitive(), true, true)
 	a.TviewApp.SetFocus(inspector.GetPrimitive())
 	a.UpdateShortcuts()
@@ -375,11 +384,11 @@ func (a *App) CloseInspector() {
 		a.ActiveInspector.OnUnmount()
 		a.ActiveInspector = nil
 	}
-	
+
 	if a.Pages.HasPage("inspect") {
 		a.Pages.RemovePage("inspect")
 	}
-	
+
 	a.RestoreFocus()
 	a.UpdateShortcuts()
 }

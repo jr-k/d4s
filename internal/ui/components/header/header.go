@@ -10,7 +10,7 @@ import (
 )
 
 type HeaderComponent struct {
-	View *tview.Table
+	View      *tview.Table
 	LastStats dao.HostStats
 }
 
@@ -35,7 +35,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	if stats.MemPercent == "..." && h.LastStats.MemPercent != "" && h.LastStats.MemPercent != "..." {
 		stats.MemPercent = h.LastStats.MemPercent
 	}
-	
+
 	// Save for next time
 	h.LastStats = stats
 
@@ -49,7 +49,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	} else if stats.CPUPercent == "..." {
 		cpuDisplay += " [dim](...)"
 	}
-	
+
 	// Build Mem display with total and percentage
 	memDisplay := stats.Mem
 	if stats.MemPercent != "" && stats.MemPercent != "N/A" && stats.MemPercent != "..." {
@@ -57,7 +57,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	} else if stats.MemPercent == "..." {
 		memDisplay += " [dim](...)"
 	}
-	
+
 	lines := []string{
 		fmt.Sprintf("[#8be9fd]Host:    [white]%s", stats.Hostname),
 		fmt.Sprintf("[#8be9fd]D4s Rev: [white]v%s", stats.D4SVersion),
@@ -77,20 +77,20 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 			SetExpansion(0) // Fixed width
 		h.View.SetCell(i, 0, cell)
 	}
-	
+
 	// Spacer Column (between Stats and Shortcuts)
 	// A fixed width column to separate them nicely (tripled size ~21 spaces)
-	spacerWidth := "                     " 
+	spacerWidth := "                     "
 	for i := 0; i < 6; i++ {
 		h.View.SetCell(i, 1, tview.NewTableCell(spacerWidth).SetBackgroundColor(styles.ColorBg))
 	}
-	
+
 	// Center Columns: Shortcuts
 	// Max 6 per column (matches header height)
 	// Each shortcut uses 2 columns: alias (fixed width) and label
 	const maxPerCol = 6
 	const groupSpacer = "      " // Spacer between shortcut groups
-	
+
 	// Organize shortcuts into columns, respecting color changes
 	var columns [][]string
 	if len(shortcuts) > 0 {
@@ -137,7 +137,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	}
 
 	colIndex := 2 // Start at 2 (0=Stats, 1=Spacer)
-	
+
 	// Render Columns
 	for i, colShortcuts := range columns {
 		// Add spacer column between groups (but not before the first one)
@@ -147,13 +147,13 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 			}
 			colIndex++
 		}
-		
+
 		// Fill all 6 rows for this column pair
 		for row := 0; row < maxPerCol; row++ {
 			var aliasText, labelText string
 			if row < len(colShortcuts) {
 				shortcut := colShortcuts[row]
-				
+
 				// Parse logic (kept same as before)
 				ltIdx := -1
 				gtIdx := -1
@@ -165,12 +165,12 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 						break
 					}
 				}
-				
+
 				if ltIdx != -1 && gtIdx != -1 {
 					colorPrefix := shortcut[:ltIdx]
 					key := shortcut[ltIdx+1 : gtIdx]
 					aliasText = colorPrefix + "<" + key + ">[-]  "
-					
+
 					labelStart := gtIdx + 1
 					if labelStart < len(shortcut) && shortcut[labelStart] == '[' {
 						for labelStart < len(shortcut) && shortcut[labelStart] != ']' {
@@ -188,14 +188,14 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 					labelText = shortcut
 				}
 			}
-			
+
 			// Alias column
 			aliasCell := tview.NewTableCell(aliasText).
 				SetAlign(tview.AlignLeft).
 				SetExpansion(0).
 				SetBackgroundColor(styles.ColorBg)
 			h.View.SetCell(row, colIndex, aliasCell)
-			
+
 			// Label column
 			labelCell := tview.NewTableCell(labelText).
 				SetAlign(tview.AlignLeft).
@@ -205,7 +205,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 		}
 		colIndex += 2
 	}
-	
+
 	// Flexible Spacer Column (pushes logo to right)
 	// Use an empty cell with Expansion 1. Need to set it on at least one row.
 	// Set on all rows to be safe with background

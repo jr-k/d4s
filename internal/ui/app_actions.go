@@ -6,10 +6,12 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 func (a *App) PerformAction(action func(id string) error, actionName string) {
@@ -18,7 +20,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string) {
 	if !ok {
 		return
 	}
-	
+
 	ids, err := a.getTargetIDs(view)
 	if err != nil {
 		return
@@ -30,7 +32,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string) {
 	a.RefreshCurrentView()
 
 	a.Flash.SetText(fmt.Sprintf("[yellow]%s %d items...", actionName, len(ids)))
-	
+
 	go func() {
 		var errs []string
 		for _, id := range ids {
@@ -38,19 +40,27 @@ func (a *App) PerformAction(action func(id string) error, actionName string) {
 				errs = append(errs, fmt.Sprintf("%s: %v", id, err))
 			}
 		}
-		
+
 		a.TviewApp.QueueUpdateDraw(func() {
 			for _, id := range ids {
 				view.ClearActionState(id)
 			}
-			
+
 			if len(errs) > 0 {
 				dialogs.ShowResultModal(a, actionName, len(ids)-len(errs), errs)
 			} else {
 				a.Flash.SetText(fmt.Sprintf("[green]%s %d items done", actionName, len(ids)))
 				// Clear selection on success?
 				view.SelectedIDs = make(map[string]bool)
-				a.RefreshCurrentView() 
+				delay := view.PopRefreshDelay()
+				if delay > 0 {
+					go func() {
+						time.Sleep(delay)
+						a.RefreshCurrentView()
+					}()
+				} else {
+					a.RefreshCurrentView()
+				}
 			}
 			a.UpdateShortcuts()
 		})
@@ -84,24 +94,24 @@ func (a *App) getSelectedID(v *view.ResourceView) (string, error) {
 	if dataIndex < 0 || dataIndex >= len(v.Data) {
 		return "", fmt.Errorf("invalid index")
 	}
-	
+
 	return v.Data[dataIndex].GetID(), nil
 }
-
 
 func (a *App) PerformDelete() {
 	page, _ := a.Pages.GetFrontPage()
 	view, ok := a.Views[page]
-	
+
 	if !ok || view.RemoveFunc == nil {
 		return
 	}
-	
+
 	action := view.RemoveFunc
 
-	
 	ids, err := a.getTargetIDs(view)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	label := ids[0]
 	if len(ids) == 1 {
@@ -123,6 +133,8 @@ func (a *App) PerformDelete() {
 		simpleAction := func(id string) error {
 			return action(id, force, a)
 		}
+		view.HighlightIDs(ids, styles.ColorStatusRed, styles.ColorStatusRedDarkBg, time.Second)
+		view.DeferRefresh(time.Second)
 		a.PerformAction(simpleAction, "Deleting")
 	})
 	a.UpdateShortcuts()
@@ -131,16 +143,15 @@ func (a *App) PerformDelete() {
 func (a *App) PerformPrune() {
 	page, _ := a.Pages.GetFrontPage()
 	view, ok := a.Views[page]
-	
+
 	if !ok || view.PruneFunc == nil {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Prune not available for %s", page))
 		return
 	}
-	
+
 	action := view.PruneFunc
 	// Capitalize page name for display (e.g. "images" -> "Images")
 	name := strings.Title(page)
-
 
 	dialogs.ShowConfirmation(a, "PRUNE", name, func(force bool) {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Pruning %s...", name))
@@ -162,10 +173,12 @@ func (a *App) PerformPrune() {
 func (a *App) PerformCopy() {
 	page, _ := a.Pages.GetFrontPage()
 	view, ok := a.Views[page]
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	var buffer bytes.Buffer
-	
+
 	// Headers
 	var headers []string
 	for i := 0; i < view.Table.GetColumnCount(); i++ {
@@ -183,7 +196,7 @@ func (a *App) PerformCopy() {
 		}
 		buffer.WriteString(strings.Join(line, "\t") + "\n")
 	}
-	
+
 	if err := a.CopyToClipboard(buffer.String()); err != nil {
 		a.Flash.SetText(fmt.Sprintf("[red]Copy error: %v", err))
 	} else {
@@ -215,16 +228,3 @@ func (a *App) CopyToClipboard(text string) error {
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

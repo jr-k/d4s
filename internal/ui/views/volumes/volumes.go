@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
@@ -13,6 +14,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 var Headers = []string{"NAME", "DRIVER", "SCOPE", "MOUNTPOINT", "CREATED", "SIZE"}
@@ -77,7 +79,9 @@ func PruneAction(app common.AppController) {
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	label := ids[0]
 	if len(ids) > 1 {
@@ -110,6 +114,10 @@ func Create(app common.AppController) {
 					app.SetFlashText(fmt.Sprintf("[red]Error creating volume: %v", err))
 				} else {
 					app.SetFlashText(fmt.Sprintf("[green]Volume %s created", text))
+					app.ScheduleViewHighlight(styles.TitleVolumes, func(res dao.Resource) bool {
+						vol, ok := res.(dao.Volume)
+						return ok && vol.Name == text
+					}, styles.ColorStatusGreen, styles.ColorStatusGreenDarkBg, time.Second)
 					app.RefreshCurrentView()
 				}
 			})
@@ -130,7 +138,7 @@ func Open(app common.AppController, res dao.Resource) {
 		app.SetFlashText("[red]Not a volume")
 		return
 	}
-	
+
 	path := vol.Mount
 	if path == "" {
 		app.SetFlashText("[yellow]No mountpoint found")
@@ -153,7 +161,7 @@ func Open(app common.AppController, res dao.Resource) {
 	}
 
 	app.SetFlashText(fmt.Sprintf("[yellow]Opening %s...", path))
-	
+
 	go func() {
 		err := cmd.Run()
 		app.GetTviewApp().QueueUpdateDraw(func() {

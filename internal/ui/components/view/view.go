@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
@@ -14,26 +16,43 @@ import (
 
 // ResourceView is the generic table view for any resource
 type ResourceView struct {
-	Table    *tview.Table
-	App      common.AppController
-	Title    string
-	Data     []dao.Resource // Filtered/Sorted Data for display
-	RawData  []dao.Resource // Original Data from last fetch
-	Filter   string // User Filter (via /)
-	SortCol  int
-	SortAsc  bool
-	ColCount int // To avoid out of bound when switching views
-	SelectedIDs map[string]bool
+	Table        *tview.Table
+	App          common.AppController
+	Title        string
+	Data         []dao.Resource // Filtered/Sorted Data for display
+	RawData      []dao.Resource // Original Data from last fetch
+	Filter       string         // User Filter (via /)
+	SortCol      int
+	SortAsc      bool
+	ColCount     int // To avoid out of bound when switching views
+	SelectedIDs  map[string]bool
 	ActionStates map[string]string // ID -> Action Name (e.g. "Stopping")
-	Headers  []string // Stored for rendering
-	
+	Headers      []string          // Stored for rendering
+
 	// Optional Overrides
-	InputHandler func(event *tcell.EventKey) *tcell.EventKey
-	ShortcutsFunc func() []string
-	FetchFunc func(app common.AppController) ([]dao.Resource, error)
-	InspectFunc func(app common.AppController, id string)
-	RemoveFunc func(id string, force bool, app common.AppController) error
-	PruneFunc func(app common.AppController) error
+	InputHandler             func(event *tcell.EventKey) *tcell.EventKey
+	ShortcutsFunc            func() []string
+	FetchFunc                func(app common.AppController) ([]dao.Resource, error)
+	InspectFunc              func(app common.AppController, id string)
+	RemoveFunc               func(id string, force bool, app common.AppController) error
+	PruneFunc                func(app common.AppController) error
+	highlightMu              sync.Mutex
+	transientHighlights      map[string]highlightEntry
+	pendingHighlightRequests []highlightRequest
+
+	refreshDelayMu    sync.Mutex
+	refreshDelayUntil time.Time
+}
+
+type highlightEntry struct {
+	bg, fg tcell.Color
+	expiry time.Time
+}
+
+type highlightRequest struct {
+	match    func(dao.Resource) bool
+	bg, fg   tcell.Color
+	duration time.Duration
 }
 
 func NewResourceView(app common.AppController, title string) *ResourceView {
@@ -42,36 +61,37 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 		SetFixed(1, 1).
 		// No vertical borders for cleaner look
 		SetSeparator(' ')
-	
+
 	// Initial Loading State
 	tv.SetBorder(true)
 	tv.SetTitle(fmt.Sprintf(" %s [[white]Loading...[-]] ", title))
 	tv.SetTitleColor(styles.ColorTitle)
 	tv.SetBorderColor(styles.ColorTableBorder)
 	tv.SetBackgroundColor(styles.ColorBg)
-	
+
 	// Add centered Loading message
 	loadingCell := tview.NewTableCell("[orange]Freshly squeezing data 🍊[-]").
 		SetAlign(tview.AlignCenter).
 		SetTextColor(tcell.ColorWhite).
 		SetExpansion(1).
 		SetSelectable(false)
-	
+
 	tv.SetCell(2, 0, loadingCell)
 
 	// Disable default selected style to handle overlay manually
 	tv.SetSelectedStyle(tcell.StyleDefault)
 
 	v := &ResourceView{
-		Table:       tv,
-		App:         app,
-		Title:       title,
-		SortAsc:     true, // Default ASC
-		SortCol:     0,    // Default first column
-		SelectedIDs: make(map[string]bool),
-		ActionStates: make(map[string]string),
+		Table:               tv,
+		App:                 app,
+		Title:               title,
+		SortAsc:             true, // Default ASC
+		SortCol:             0,    // Default first column
+		SelectedIDs:         make(map[string]bool),
+		ActionStates:        make(map[string]string),
+		transientHighlights: make(map[string]highlightEntry),
 	}
-	
+
 	// Handle Selection Change for custom highlighting (Optimized)
 	tv.SetSelectionChangedFunc(func(row, col int) {
 		v.updateCursorStyle(row)
@@ -143,14 +163,14 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 		case 'k':
 			return tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone)
 		}
-		
+
 		// Context specific shortcuts
 		if v.Title == styles.TitleCompose && event.Key() == tcell.KeyEnter {
 			row, _ := tv.GetSelection()
 			if row > 0 && row <= len(v.Data) {
 				res := v.Data[row-1]
 				projName := res.GetID()
-				
+
 				// Try to get config file path
 				label := projName
 				if cp, ok := res.(dao.ComposeProject); ok {
@@ -166,7 +186,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 					Label:      label,
 					OriginView: styles.TitleCompose,
 				})
-				
+
 				// Switch to Containers
 				v.App.SwitchTo(styles.TitleContainers)
 				return nil
@@ -178,7 +198,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 			if row > 0 && row <= len(v.Data) {
 				res := v.Data[row-1]
 				nodeID := res.GetID()
-				
+
 				// Get Node Hostname for Label
 				label := nodeID
 				if cells := res.GetCells(); len(cells) > 1 {
@@ -192,7 +212,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 					Label:      label,
 					OriginView: styles.TitleNodes,
 				})
-				
+
 				// Switch to Services
 				v.App.SwitchTo(styles.TitleServices)
 				return nil
@@ -240,11 +260,11 @@ func (v *ResourceView) Refilter() {
 
 	// 1. Filter Data First
 	var filtered []dao.Resource
-	
+
 	// Use cached RawData
 	for _, item := range v.RawData {
 		match := true
-		
+
 		cells := item.GetCells()
 
 		// User Filter
@@ -270,7 +290,7 @@ func (v *ResourceView) Refilter() {
 	sort.SliceStable(filtered, func(i, j int) bool {
 		rowI := filtered[i].GetCells()
 		rowJ := filtered[j].GetCells()
-		
+
 		if v.SortCol >= len(rowI) || v.SortCol >= len(rowJ) {
 			return i < j
 		}
@@ -280,7 +300,7 @@ func (v *ResourceView) Refilter() {
 
 		// Try numeric/size sort
 		less := common.CompareValues(valI, valJ)
-		
+
 		if v.SortAsc {
 			return less
 		}
@@ -293,6 +313,8 @@ func (v *ResourceView) Refilter() {
 
 func (v *ResourceView) renderAll() {
 	v.Table.Clear()
+
+	v.processHighlightRequests()
 
 	// 3. Set Headers with Indicators
 	for i, h := range v.Headers {
@@ -311,7 +333,7 @@ func (v *ResourceView) renderAll() {
 			SetSelectable(false).
 			SetExpansion(1).
 			SetAttributes(tcell.AttrBold)
-		
+
 		// Highlight sorted column header
 		if i == v.SortCol {
 			cell.SetTextColor(tcell.ColorMediumPurple)
@@ -334,11 +356,11 @@ func (v *ResourceView) renderAll() {
 	for i, item := range v.Data {
 		cells := item.GetCells()
 		rowIndex := i + 1
-		
+
 		for j, text := range cells {
 			// Basic Cell creation - styles applied in refreshStyles
 			cell := tview.NewTableCell(" " + text + " ")
-			
+
 			// Align right for numeric columns (data)
 			if j < len(v.Headers) {
 				headerName := strings.ToUpper(v.Headers[j])
@@ -346,11 +368,11 @@ func (v *ResourceView) renderAll() {
 					cell.SetAlign(tview.AlignRight)
 				}
 			}
-			
+
 			v.Table.SetCell(rowIndex, j, cell)
 		}
 	}
-	
+
 	// Scroll/Selection Logic
 	rowCount := v.Table.GetRowCount()
 	if rowCount > 1 {
@@ -361,10 +383,9 @@ func (v *ResourceView) renderAll() {
 	} else {
 		v.Table.Select(0, 0)
 	}
-	
+
 	v.refreshStyles()
 }
-
 
 func (v *ResourceView) SetActionState(id, action string) {
 	v.ActionStates[id] = action
@@ -383,7 +404,7 @@ func (v *ResourceView) updateCursorStyle(cursorRow int) {
 	dataIdx := cursorRow - 1
 	isCursorSelected := false
 	isCursorAction := false
-	
+
 	if dataIdx >= 0 && dataIdx < len(v.Data) {
 		id := v.Data[dataIdx].GetID()
 		isCursorSelected = v.SelectedIDs[id]
@@ -405,13 +426,13 @@ func (v *ResourceView) updateCursorStyle(cursorRow int) {
 // updateRowStyle updates the style for a specific row
 func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	id := item.GetID()
-	
+
 	isSelected := v.SelectedIDs[id]
 	actionState := v.ActionStates[id]
 	isAction := actionState != ""
 	isExiting := false
 	isStarting := false
-	
+
 	// Check for Exiting/Starting status in Data (Backend status)
 	if container, ok := item.(dao.Container); ok {
 		lowerStatus := strings.ToLower(container.Status)
@@ -426,7 +447,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	// Service Replicas Status (Active/Desired)
 	var serviceStatusColor tcell.Color
 	hasServiceStatus := false
-	
+
 	if service, ok := item.(dao.Service); ok {
 		if strings.Contains(service.Replicas, "/") {
 			parts := strings.Split(service.Replicas, "/")
@@ -434,7 +455,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 				var running, desired int
 				fmt.Sscanf(parts[0], "%d", &running)
 				fmt.Sscanf(parts[1], "%d", &desired)
-				
+
 				if desired == 0 && running == 0 {
 					// 0/0 -> (Stopped but intentional)
 					serviceStatusColor = styles.ColorStatusOrange // Orange
@@ -456,46 +477,54 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	var bgColor tcell.Color
 	var fgColor tcell.Color
 	
-	// Priority: Starting/Exiting > Action > Selected > Normal
-	if isStarting {
-		bgColor = styles.ColorStatusBlue
-		fgColor = styles.ColorStatusBlueDarkBg
-	} else if isExiting {
-		bgColor = styles.ColorStatusRed
-		fgColor = styles.ColorStatusRedDarkBg
-	} else if isAction {
-		actionStateLower := strings.ToLower(actionState)
-		if strings.Contains(actionStateLower, "stopping") && !strings.Contains(actionStateLower, "restarting") {
-			bgColor = styles.ColorStatusRedDarkBg
-			fgColor = styles.ColorStatusRed
-		} else if strings.Contains(actionStateLower, "starting") && !strings.Contains(actionStateLower, "restarting") {
-			bgColor = styles.ColorStatusBlueDarkBg
-			fgColor = styles.ColorStatusBlue
-		} else {
-			// Restarting or others -> Orange
-			bgColor = styles.ColorStatusOrangeDarkBg
-			fgColor = styles.ColorStatusOrange
-		}
-	} else if isSelected {
-		bgColor = styles.ColorBg
-		fgColor = styles.ColorMultiSelectFg
-	} else if hasServiceStatus {
-		// Apply Service Status Color to the whole row text if not selected/action
-		bgColor = styles.ColorBg
-		fgColor = serviceStatusColor
+	highlight, hasHighlight := v.getTransientHighlight(id)
+	if hasHighlight {
+		bgColor = highlight.bg
+		fgColor = highlight.fg
 	} else {
-		bgColor = styles.ColorBg
-		fgColor = styles.ColorFg
+		// Priority: Starting/Exiting > Action > Selected > Normal
+		if isStarting {
+			bgColor = styles.ColorStatusBlue
+			fgColor = styles.ColorStatusBlueDarkBg
+		} else if isExiting {
+			bgColor = styles.ColorStatusRed
+			fgColor = styles.ColorStatusRedDarkBg
+		} else if isAction {
+			actionStateLower := strings.ToLower(actionState)
+			if strings.Contains(actionStateLower, "stopping") && !strings.Contains(actionStateLower, "restarting") {
+				bgColor = styles.ColorStatusRedDarkBg
+				fgColor = styles.ColorStatusRed
+			} else if strings.Contains(actionStateLower, "starting") && !strings.Contains(actionStateLower, "restarting") {
+				bgColor = styles.ColorStatusBlueDarkBg
+				fgColor = styles.ColorStatusBlue
+			} else {
+				// Restarting or others -> Orange
+				bgColor = styles.ColorStatusOrangeDarkBg
+				fgColor = styles.ColorStatusOrange
+			}
+		} else if isSelected {
+			bgColor = styles.ColorBg
+			fgColor = styles.ColorMultiSelectFg
+		} else if hasServiceStatus {
+			// Apply Service Status Color to the whole row text if not selected/action
+			bgColor = styles.ColorBg
+			fgColor = serviceStatusColor
+		} else {
+			bgColor = styles.ColorBg
+			fgColor = styles.ColorFg
+		}
 	}
-	
+
 	// Apply to all cells in row
 	cells := item.GetCells()
 	for j, text := range cells {
 		cell := v.Table.GetCell(rowIndex, j)
-		if cell == nil { continue }
-		
+		if cell == nil {
+			continue
+		}
+
 		displayText := text
-		
+
 		// Specific Column Logic (Status, Name, etc)
 		headerName := ""
 		if j < len(v.Headers) {
@@ -503,13 +532,15 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 		}
 
 		colColor := fgColor // Default to determined FG
-		
+
 		// Override FG based on column type if NOT selected/action
 		forceTheme := isSelected || isAction || isStarting || isExiting || hasServiceStatus
 
 		// 1. ID Column
 		if headerName == "ID" {
-			if !forceTheme { colColor = styles.ColorDim }
+			if !forceTheme {
+				colColor = styles.ColorDim
+			}
 		}
 
 		// 2. Status Column
@@ -517,70 +548,102 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 			if isAction {
 				actionState := strings.ToLower(actionState)
 				if strings.Contains(actionState, "stopping") && !strings.Contains(actionState, "restarting") {
-					if !forceTheme { colColor = styles.ColorStatusRed } // Red
+					if !forceTheme {
+						colColor = styles.ColorStatusRed
+					} // Red
 					displayText = "🔴 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				} else if strings.Contains(actionState, "starting") && !strings.Contains(actionState, "restarting") {
-					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
+					if !forceTheme {
+						colColor = styles.ColorStatusBlue
+					} // Blue
 					displayText = "🔵 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				} else {
-					if !forceTheme { colColor = styles.ColorStatusOrange } // Orange
+					if !forceTheme {
+						colColor = styles.ColorStatusOrange
+					} // Orange
 					displayText = "🟠 " + strings.ToUpper(actionState[:1]) + actionState[1:] + "..."
 				}
 			} else {
 				lowerStatus := strings.ToLower(text)
 				// Node Status
 				if strings.Contains(lowerStatus, "ready") || strings.Contains(lowerStatus, "active") {
-					if !forceTheme { colColor = styles.ColorStatusGreen }
+					if !forceTheme {
+						colColor = styles.ColorStatusGreen
+					}
 					// Deprecated: use of strings.Title; using ucfirst.
 					displayText = "🟢 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "down") || strings.Contains(lowerStatus, "drain") || strings.Contains(lowerStatus, "disconnected") {
-					if !forceTheme { colColor = styles.ColorStatusRed }
+					if !forceTheme {
+						colColor = styles.ColorStatusRed
+					}
 					displayText = "🔴 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "unknown") {
-					if !forceTheme { colColor = styles.ColorStatusOrange } // Orange
+					if !forceTheme {
+						colColor = styles.ColorStatusOrange
+					} // Orange
 					displayText = "🟠 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "exiting") {
-					if !forceTheme { colColor = styles.ColorStatusRed } // Red
+					if !forceTheme {
+						colColor = styles.ColorStatusRed
+					} // Red
 					displayText = "🔴 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "starting") {
-					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
+					if !forceTheme {
+						colColor = styles.ColorStatusBlue
+					} // Blue
 					displayText = "🔵 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "up") || strings.Contains(lowerStatus, "running") || strings.Contains(lowerStatus, "healthy") {
-					if !forceTheme { colColor = styles.ColorStatusGreen }
+					if !forceTheme {
+						colColor = styles.ColorStatusGreen
+					}
 					if !strings.Contains(text, "Up") {
 						displayText = "🟢 " + strings.ToUpper(text[:1]) + text[1:]
 					} else {
 						displayText = strings.Replace(text, "Up", "🟢 Up", 1)
 					}
 				} else if strings.Contains(lowerStatus, "exited") || strings.Contains(lowerStatus, "stop") {
-					if !forceTheme { colColor = styles.ColorStatusGray }
+					if !forceTheme {
+						colColor = styles.ColorStatusGray
+					}
 					displayText = "⚫ " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "created") {
-					if !forceTheme { colColor = styles.ColorStatusBlue } // Blue
+					if !forceTheme {
+						colColor = styles.ColorStatusBlue
+					} // Blue
 					displayText = "🔵 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "dead") || strings.Contains(lowerStatus, "error") {
-					if !forceTheme { colColor = styles.ColorStatusRed }
+					if !forceTheme {
+						colColor = styles.ColorStatusRed
+					}
 					displayText = "🔴 " + strings.ToUpper(text[:1]) + text[1:]
 				} else if strings.Contains(lowerStatus, "pause") {
-					if !forceTheme { colColor = styles.ColorStatusYellow }
+					if !forceTheme {
+						colColor = styles.ColorStatusYellow
+					}
 					displayText = "⏸️ " + strings.ToUpper(text[:1]) + text[1:]
 				}
 			}
 		}
-		
+
 		// 3. Size / Ports
 		if headerName == "SIZE" || headerName == "PORTS" {
-			if !forceTheme { colColor = styles.ColorTitle }
+			if !forceTheme {
+				colColor = styles.ColorTitle
+			}
 		}
 
 		// 3b. Mountpoint / Compose
 		if headerName == "MOUNTPOINT" || headerName == "COMPOSE" {
-			if !forceTheme { colColor = styles.ColorDim }
+			if !forceTheme {
+				colColor = styles.ColorDim
+			}
 		}
-		
+
 		// 4. Name
 		if headerName == "NAME" {
-			if !forceTheme { colColor = tcell.ColorWhite }
+			if !forceTheme {
+				colColor = tcell.ColorWhite
+			}
 			cell.SetAttributes(tcell.AttrBold)
 		} else {
 			cell.SetAttributes(tcell.AttrNone)
@@ -600,7 +663,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 		cell.SetText(" " + displayText + " ")
 		cell.SetBackgroundColor(bgColor)
 		cell.SetTextColor(colColor)
-		
+
 		// Align Right for numeric columns
 		if headerName == "SIZE" || headerName == "REPLICAS" || headerName == "CPU" || headerName == "MEM" {
 			cell.SetAlign(tview.AlignRight)
@@ -611,10 +674,133 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 func (v *ResourceView) refreshStyles() {
 	row, _ := v.Table.GetSelection()
 	v.updateCursorStyle(row)
-	
+
 	for i, item := range v.Data {
 		v.updateRowStyle(i+1, item)
 	}
+}
+
+func (v *ResourceView) HighlightIDs(ids []string, bg, fg tcell.Color, duration time.Duration) {
+	if len(ids) == 0 || duration <= 0 {
+		return
+	}
+
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		v.addTransientHighlight(id, bg, fg, duration)
+	}
+
+	if v.App != nil {
+		v.App.GetTviewApp().QueueUpdateDraw(func() {
+			v.refreshStyles()
+		})
+	}
+}
+
+func (v *ResourceView) ScheduleHighlight(match func(dao.Resource) bool, bg, fg tcell.Color, duration time.Duration) {
+	if match == nil || duration <= 0 {
+		return
+	}
+
+	v.highlightMu.Lock()
+	v.pendingHighlightRequests = append(v.pendingHighlightRequests, highlightRequest{
+		match:    match,
+		bg:       bg,
+		fg:       fg,
+		duration: duration,
+	})
+	v.highlightMu.Unlock()
+}
+
+func (v *ResourceView) processHighlightRequests() {
+	v.highlightMu.Lock()
+	requests := v.pendingHighlightRequests
+	v.pendingHighlightRequests = nil
+	v.highlightMu.Unlock()
+
+	if len(requests) == 0 {
+		return
+	}
+
+	for _, req := range requests {
+		if req.match == nil {
+			continue
+		}
+		for _, res := range v.Data {
+			if req.match(res) {
+				v.addTransientHighlight(res.GetID(), req.bg, req.fg, req.duration)
+			}
+		}
+	}
+}
+
+func (v *ResourceView) addTransientHighlight(id string, bg, fg tcell.Color, duration time.Duration) {
+	if id == "" || duration <= 0 {
+		return
+	}
+
+	expiry := time.Now().Add(duration)
+	v.highlightMu.Lock()
+	v.transientHighlights[id] = highlightEntry{bg: bg, fg: fg, expiry: expiry}
+	v.highlightMu.Unlock()
+
+	go func(target string, until time.Time) {
+		sleep := time.Until(until)
+		if sleep > 0 {
+			time.Sleep(sleep)
+		}
+		v.highlightMu.Lock()
+		entry, ok := v.transientHighlights[target]
+		if ok && entry.expiry == until {
+			delete(v.transientHighlights, target)
+		}
+		v.highlightMu.Unlock()
+		if v.App != nil {
+			v.App.GetTviewApp().QueueUpdateDraw(func() {
+				v.refreshStyles()
+			})
+		}
+	}(id, expiry)
+}
+
+func (v *ResourceView) getTransientHighlight(id string) (highlightEntry, bool) {
+	v.highlightMu.Lock()
+	defer v.highlightMu.Unlock()
+	entry, ok := v.transientHighlights[id]
+	return entry, ok
+}
+
+func (v *ResourceView) DeferRefresh(duration time.Duration) {
+	if duration <= 0 {
+		return
+	}
+
+	v.refreshDelayMu.Lock()
+	defer v.refreshDelayMu.Unlock()
+	until := time.Now().Add(duration)
+	if until.After(v.refreshDelayUntil) {
+		v.refreshDelayUntil = until
+	}
+}
+
+func (v *ResourceView) PopRefreshDelay() time.Duration {
+	v.refreshDelayMu.Lock()
+	defer v.refreshDelayMu.Unlock()
+	if v.refreshDelayUntil.IsZero() {
+		return 0
+	}
+
+	now := time.Now()
+	if now.Before(v.refreshDelayUntil) {
+		delay := v.refreshDelayUntil.Sub(now)
+		v.refreshDelayUntil = time.Time{}
+		return delay
+	}
+
+	v.refreshDelayUntil = time.Time{}
+	return 0
 }
 
 func (v *ResourceView) GetSelectedID() (string, error) {
@@ -627,7 +813,7 @@ func (v *ResourceView) GetSelectedID() (string, error) {
 	if dataIndex < 0 || dataIndex >= len(v.Data) {
 		return "", fmt.Errorf("invalid index")
 	}
-	
+
 	return v.Data[dataIndex].GetID(), nil
 }
 

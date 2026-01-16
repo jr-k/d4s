@@ -2,7 +2,9 @@ package common
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/rivo/tview"
 )
@@ -20,7 +22,7 @@ type AppController interface {
 	ActivateCmd(initial string)
 	SwitchTo(viewName string)
 	ExecuteCmd(cmd string)
-	
+
 	// Accessors
 	GetPages() *tview.Pages
 	GetTviewApp() *tview.Application
@@ -29,21 +31,23 @@ type AppController interface {
 	// Actions
 	PerformAction(action func(id string) error, actionName string)
 	InspectCurrentSelection()
-	
+
 	// State
 	GetActiveScope() *Scope
 	SetActiveScope(scope *Scope)
 	SetFilter(filter string)
 	SetFlashText(text string)
 	RestoreFocus()
-	
+
 	// Direct access for command component (needed for handlers)
 	GetActiveFilter() string
 	SetActiveFilter(filter string)
-	
+
 	// Layout management
 	SetCmdLineVisible(visible bool)
 	UpdateShortcuts()
+
+	ScheduleViewHighlight(viewName string, match func(dao.Resource) bool, bg, fg tcell.Color, duration time.Duration)
 
 	// Inspector Management
 	OpenInspector(inspector Inspector)

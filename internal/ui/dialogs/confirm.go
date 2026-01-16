@@ -13,8 +13,8 @@ import (
 func ShowConfirmation(app common.AppController, actionName, item string, onConfirm func(force bool)) {
 	// Center the dialog
 	dialogWidth := 60
-	dialogHeight := 16 
-	
+	dialogHeight := 16
+
 	pages := app.GetPages()
 	tviewApp := app.GetTviewApp()
 
@@ -23,7 +23,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		SetTextAlign(tview.AlignCenter).
 		SetText(fmt.Sprintf("\n[red::b] DANGER ZONE \n\n[white::-]You are about to %s:\n[yellow]%s[white]\n\nType exactly: [red::b]Yes Please![white::-]", actionName, item))
 	text.SetBackgroundColor(tcell.ColorBlack)
-	
+
 	// Force Checkbox
 	force := false
 	checkboxLabel := tview.NewTextView().
@@ -31,7 +31,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		SetText("Force:").
 		SetTextAlign(tview.AlignLeft)
 	checkboxLabel.SetBackgroundColor(tcell.ColorBlack)
-	
+
 	checkbox := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignLeft).
@@ -43,7 +43,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		if force {
 			text = "Yes"
 		}
-		
+
 		color := "[white]"
 		if focused {
 			color = "[#ffb86c]" // Orange focus
@@ -52,7 +52,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 
 		checkbox.SetText(fmt.Sprintf("%s%s", color, text))
 	}
-	
+
 	updateCheckbox(false)
 
 	// Input field
@@ -61,14 +61,14 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		SetText("Confirmation:").
 		SetTextAlign(tview.AlignLeft)
 	inputLabel.SetBackgroundColor(tcell.ColorBlack)
-	
+
 	input := tview.NewInputField().
 		SetFieldBackgroundColor(styles.ColorSelectBg).
 		SetFieldTextColor(tcell.ColorRed)
 	input.SetBackgroundColor(tcell.ColorBlack)
 
 	// Form layout: 2 columns (label | widget) with fixed label width and padding
-	
+
 	// Helper for empty box
 	empty := func(w int) tview.Primitive {
 		return tview.NewBox().SetBackgroundColor(tcell.ColorBlack)
@@ -77,11 +77,11 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 	// Row 1: Checkbox
 	checkboxRow := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(empty(2), 2, 0, false). // Left Padding
+		AddItem(empty(2), 2, 0, false).       // Left Padding
 		AddItem(checkboxLabel, 15, 0, false). // Fixed Label Width
-		AddItem(checkbox, 0, 1, false). // Widget
-		AddItem(empty(2), 2, 0, false) // Right Padding
-	
+		AddItem(checkbox, 0, 1, false).       // Widget
+		AddItem(empty(2), 2, 0, false)        // Right Padding
+
 	// Row 2: Input
 	inputRow := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
@@ -89,7 +89,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		AddItem(inputLabel, 15, 0, false).
 		AddItem(input, 0, 1, false).
 		AddItem(empty(2), 2, 0, false)
-	
+
 	// Form container
 	form := tview.NewFlex().
 		SetDirection(tview.FlexRow).
@@ -101,7 +101,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		SetDirection(tview.FlexRow).
 		AddItem(text, 0, 1, false).
 		AddItem(form, 4, 0, true)
-	
+
 	content.SetBorder(true).
 		SetTitle(" Are you sure? ").
 		SetTitleColor(tcell.ColorRed).
@@ -136,7 +136,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		} else if currentFocus > 1 {
 			currentFocus = 0
 		}
-		
+
 		if currentFocus == 0 {
 			updateCheckbox(true)
 			tviewApp.SetFocus(checkbox)
@@ -201,9 +201,9 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 	})
 
 	pages.AddPage("confirm", modal, true, true)
-	// Start with checkbox focused
-	currentFocus = 0
-	updateCheckbox(true)
-	tviewApp.SetFocus(checkbox)
+	// Default to the last field (input) when deleting
+	currentFocus = 1
+	updateCheckbox(false)
+	tviewApp.SetFocus(input)
 	app.UpdateShortcuts()
 }

@@ -29,7 +29,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{"", ""},
 		{"[#ffb86c::b]NAVIGATION", ""},
 		{"[#5f87ff]←/→[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]enter[-]           Drill Down"},
-		{"[#5f87ff]shift ←/→[-]           Sort Column", "[#5f87ff]shift ↑/↓[-]          Toggle Order"},
+		{"[#5f87ff]shift ←/→[-]          Sort Column", "[#5f87ff]shift ↑/↓[-]          Toggle Order"},
 	}
 
 	for i, row := range rows {
