@@ -29,6 +29,7 @@ type ResourceView struct {
 	SelectedIDs  map[string]bool
 	ActionStates map[string]ActionState // ID -> Action State
 	Headers      []string               // Stored for rendering
+	ColumnWidths []int                  // Cache for column widths
 
 	// Optional Overrides
 	InputHandler             func(event *tcell.EventKey) *tcell.EventKey
@@ -64,7 +65,7 @@ type highlightRequest struct {
 func NewResourceView(app common.AppController, title string) *ResourceView {
 	tv := tview.NewTable().
 		SetSelectable(true, false).
-		SetFixed(1, 1).
+		SetFixed(1, 0).
 		// No vertical borders for cleaner look
 		SetSeparator(' ')
 
@@ -110,7 +111,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 
 	// Navigation shortcuts
 	tv.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Sorting Shortcuts: SHIFT + ARROWS changes SORT
+		// Sorting & Focus Shortcuts: SHIFT + ARROWS
 		if event.Modifiers()&tcell.ModShift != 0 {
 			switch event.Key() {
 			case tcell.KeyUp:
@@ -125,38 +126,92 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 				v.SortAsc = false
 				app.RefreshCurrentView()
 				return nil
+			case tcell.KeyRight:
+				// Move FocusCol Right
+				if v.ColCount > 0 {
+					if v.FocusCol < v.ColCount-1 {
+						v.FocusCol++
+						v.renderAll()
+						
+						// Smart Scroll Right:
+						// Calculate if the new FocusCol is likely off-screen to the right.
+						_, _, width, _ := tv.GetInnerRect()
+						_, cOffset := tv.GetOffset()
+
+						// Estimate used width from cOffset to FocusCol
+						usedWidth := 0
+						// We iterate up to FocusCol to see where its right edge lands
+						for i := cOffset; i <= v.FocusCol; i++ {
+							// Use calculated widths
+							colW := 15 // Fallback min width
+							if i < len(v.ColumnWidths) {
+								colW = v.ColumnWidths[i]
+							}
+							// Add padding (2) + separator (1) = 3
+							usedWidth += colW + 3
+						}
+
+						// If the right edge of the focused column is outside the view width
+						// We need to scroll right until it fits.
+						if usedWidth >= width {
+							// Find new offset that makes it fit
+							// We remove columns from the left (incrementing offset) until the focused column fits
+							currentUsed := usedWidth
+							newOffset := cOffset
+							
+							for k := cOffset; k < v.FocusCol; k++ {
+								w := 15
+								if k < len(v.ColumnWidths) {
+									w = v.ColumnWidths[k] + 3
+								}
+								currentUsed -= w
+								newOffset++
+								// If we fit within the width (with a small margin for right border)
+								if currentUsed < width-2 {
+									break
+								}
+							}
+							
+							if newOffset >= v.ColCount {
+								newOffset = v.ColCount - 1
+							}
+							tv.SetOffset(0, newOffset)
+						}
+					}
+				}
+				return nil
+			case tcell.KeyLeft:
+				// Move FocusCol Left
+				if v.ColCount > 0 {
+					if v.FocusCol > 0 {
+						v.FocusCol--
+						v.renderAll()
+						
+						// Ensure visibility (Left Edge is easy)
+						// If we move focus left, and it becomes < cOffset, we MUST scroll left to see it.
+						_, cOffset := tv.GetOffset()
+						if v.FocusCol < cOffset {
+							tv.SetOffset(0, v.FocusCol)
+						}
+					}
+				}
+				return nil
 			}
 		}
 
-		// Horizontal Scrolling (Focus Column) WITHOUT changing Sort (ARROWS only)
+		// Horizontal Scrolling (Viewport)
 		if event.Key() == tcell.KeyRight {
-			// Move FocusCol Right
-			if v.ColCount > 0 {
-				v.FocusCol = (v.FocusCol + 1) % v.ColCount
-				// Update selection in table to reflect focus change
-				// IMPORTANT: Do NOT call RefreshCurrentView here to avoid flickering/resorting
-				// Just redraw the table cursor/selection
-				row, _ := tv.GetSelection()
-				tv.Select(row, v.FocusCol)
-				
-				// Force redraw of headers to update underline
-				v.renderAll() 
+			r, c := tv.GetOffset()
+			// Allow scrolling up to the last column
+			if v.ColCount > 0 && c < v.ColCount-1 {
+				tv.SetOffset(r, c+1)
 			}
 			return nil
 		}
 		if event.Key() == tcell.KeyLeft {
-			// Move FocusCol Left
-			if v.ColCount > 0 {
-				v.FocusCol--
-				if v.FocusCol < 0 {
-					v.FocusCol = v.ColCount - 1
-				}
-				// Update selection in table to reflect focus change
-				row, _ := tv.GetSelection()
-				tv.Select(row, v.FocusCol)
-				
-				// Force redraw of headers to update underline
-				v.renderAll()
+			r, c := tv.GetOffset()
+			if c > 0 {
+				tv.SetOffset(r, c-1)
 			}
 			return nil
 		}
@@ -326,7 +381,38 @@ func (v *ResourceView) Refilter() {
 	})
 
 	v.Data = filtered // Update view data with sorted/filtered list
+	v.recalculateColumnWidths()
 	v.renderAll()
+}
+
+func (v *ResourceView) recalculateColumnWidths() {
+	if len(v.Headers) == 0 {
+		return
+	}
+	v.ColumnWidths = make([]int, len(v.Headers))
+	// Init with Header widths
+	for i, h := range v.Headers {
+		v.ColumnWidths[i] = len(h)
+	}
+
+	// Sample Data to find max width
+	limit := len(v.Data)
+	if limit > 100 {
+		limit = 100
+	}
+
+	for i := 0; i < limit; i++ {
+		cells := v.Data[i].GetCells()
+		for j, text := range cells {
+			if j < len(v.ColumnWidths) {
+				// Strip tags for accurate length
+				l := len(stripFormattingTags(text))
+				if l > v.ColumnWidths[j] {
+					v.ColumnWidths[j] = l
+				}
+			}
+		}
+	}
 }
 
 // GetCurrentColumnSorted returns the name of the column currently used for sorting
@@ -370,7 +456,7 @@ func (v *ResourceView) renderAll() {
 
 		// Color logic: Focus = Blue, Others = White
 		if i == v.FocusCol {
-			cell.SetTextColor(styles.ColorHeaderSort) // Blue
+			cell.SetTextColor(styles.ColorHeaderFocus) // Blue
 		} else {
 			cell.SetTextColor(styles.ColorHeader) // White
 		}
@@ -399,7 +485,10 @@ func (v *ResourceView) renderAll() {
 				}
 			}
 
-			v.Table.SetCell(rowIndex, j, cell)
+			// Safe index check
+			if j < v.Table.GetColumnCount() {
+				v.Table.SetCell(rowIndex, j, cell)
+			}
 		}
 	}
 
@@ -490,11 +579,22 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	}
 
 	cells := item.GetCells()
-	for j, text := range cells {
-		cell := v.Table.GetCell(rowIndex, j)
-		if cell == nil {
-			continue
-		}
+		for j, text := range cells {
+			// Check bounds first to avoid panic in GetCell
+			if j >= v.Table.GetColumnCount() {
+				break
+			}
+			
+			cell := v.Table.GetCell(rowIndex, j)
+			if cell == nil {
+				// Try to re-create cell if missing (rare but possible in race)
+				if j < v.Table.GetColumnCount() {
+					cell = tview.NewTableCell(" " + text + " ")
+					v.Table.SetCell(rowIndex, j, cell)
+				} else {
+					continue
+				}
+			}
 
 		displayText := stripFormattingTags(text)
 

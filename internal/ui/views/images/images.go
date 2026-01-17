@@ -46,7 +46,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 func PruneAction(app common.AppController) {
 	dialogs.ShowConfirmation(app, "PRUNE", "Images", func(force bool) {
 		app.SetFlashText("[yellow]Pruning Images...")
-		go func() {
+		app.RunInBackground(func() {
 			err := Prune(app)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -56,7 +56,7 @@ func PruneAction(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
 

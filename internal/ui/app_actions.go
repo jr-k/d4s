@@ -32,7 +32,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 
 	a.Flash.SetText(fmt.Sprintf("[yellow]%s %d items...", actionName, len(ids)))
 
-	go func() {
+	a.RunInBackground(func() {
 		var errs []string
 		for _, id := range ids {
 			if err := action(id); err != nil {
@@ -63,7 +63,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 			}
 			a.UpdateShortcuts()
 		})
-	}()
+	})
 }
 
 // Helper to get target IDs (Multi or Single)
@@ -156,7 +156,7 @@ func (a *App) PerformPrune() {
 
 	dialogs.ShowConfirmation(a, "PRUNE", name, func(force bool) {
 		a.Flash.SetText(fmt.Sprintf("[yellow]Pruning %s...", name))
-		go func() {
+		a.RunInBackground(func() {
 			err := action(a)
 			a.TviewApp.QueueUpdateDraw(func() {
 				if err != nil {
@@ -166,7 +166,7 @@ func (a *App) PerformPrune() {
 					a.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 	a.UpdateShortcuts()
 }
@@ -237,8 +237,8 @@ func (a *App) PerformCopy() {
 		a.AppendFlash(fmt.Sprintf("[red]Copy error: %v", err))
 	} else {
 		preview := value
-		if len(preview) > 20 {
-			preview = preview[:20] + "..."
+		if len(preview) > 60 {
+			preview = preview[:60] + "..."
 		}
 		a.AppendFlash(fmt.Sprintf("[black:#50fa7b] <copied: %s>[-]", preview))
 	}

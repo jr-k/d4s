@@ -270,9 +270,30 @@ func Shell(app common.AppController, id string) {
 	}
 
 	dialogs.ShowPicker(app, "Shell Picker", items, func(shell string) {
+		// Stop any background refresh to prevent UI updates interfering with the shell
+		app.StopAutoRefresh()
+		
+		// Still set paused flag as double safety for any lingering goroutines
+		app.SetPaused(true)
+
+		defer func() {
+			app.SetPaused(false)
+			app.StartAutoRefresh()
+		}()
+
 		app.GetTviewApp().Suspend(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Shell panic: %v\n", r)
+				}
+			}()
+
 			fmt.Print("\033[H\033[2J")
-			fmt.Printf("Entering shell %s for %s (type 'exit' to return)...\n", shell, id)
+			fmt.Printf("Entering shell %s for %s (type 'exit' or CTRL+D to return)...\n", shell, id)
+			
+			// Use proper PTY handling or simple command depending on platform
+			// For basic usage, standard io connection is usually enough but Suspend/Restore is tricky
+			// We MUST ensure tview is fully suspended
 			
 			cmd := exec.Command("docker", "exec", "-it", id, shell)
 			cmd.Stdin = os.Stdin
@@ -280,10 +301,20 @@ func Shell(app common.AppController, id string) {
 			cmd.Stderr = os.Stderr
 			
 			if err := cmd.Run(); err != nil {
-				fmt.Printf("Error executing shell: %v\nPress Enter to continue...", err)
+				// If it's a legitimate exit (like 127 or 130), we might not want to pause
+				// But usually if docker exec fails we want to see why
+				fmt.Printf("\nError executing shell: %v\nPress Enter to continue...", err)
 				fmt.Scanln()
 			}
+			
+			// Clear again to ensure clean return
+			fmt.Print("\033[H\033[2J")
 		})
+		
+		// Fix race conditions/glitches where screen isn't fully restored
+		if app.GetScreen() != nil {
+			app.GetScreen().Sync()
+		}
 	})
 }
 
@@ -317,7 +348,7 @@ func StopAction(app common.AppController, v *view.ResourceView) {
 func PruneAction(app common.AppController) {
 	dialogs.ShowConfirmation(app, "PRUNE", "Containers", func(force bool) {
 		app.SetFlashText("[yellow]Pruning Containers...")
-		go func() {
+		app.RunInBackground(func() {
 			err := Prune(app)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -327,7 +358,7 @@ func PruneAction(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
 

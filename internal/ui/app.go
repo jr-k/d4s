@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"runtime/debug"
@@ -27,6 +28,7 @@ import (
 
 type App struct {
 	TviewApp *tview.Application
+	Screen   tcell.Screen
 	Docker   *dao.DockerClient
 
 	// Components
@@ -44,6 +46,11 @@ type App struct {
 	ActiveFilter    string
 	ActiveScope     *common.Scope
 	ActiveInspector common.Inspector
+
+	// Concurrency
+	pauseMx    sync.RWMutex
+	paused     bool
+	stopTicker chan struct{}
 }
 
 // Ensure App implements AppController interface
@@ -76,8 +83,19 @@ func NewApp() *App {
 		panic(err)
 	}
 
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		panic(err)
+	}
+	// We don't Init() here, tview does it on Run() if we set it?
+	// Actually tview.Application.Run() calls screen.Init() if not initialized.
+	
+	tviewApp := tview.NewApplication()
+	tviewApp.SetScreen(screen)
+
 	app := &App{
-		TviewApp: tview.NewApplication(),
+		TviewApp: tviewApp,
+		Screen:   screen,
 		Docker:   docker,
 		Views:    make(map[string]*view.ResourceView),
 		Pages:    tview.NewPages(),
@@ -95,21 +113,48 @@ func (a *App) Run() error {
 		}
 	}()
 
+	// Start auto-refresh
+	a.StartAutoRefresh()
+
+	return a.TviewApp.SetRoot(a.Layout, true).Run()
+}
+
+func (a *App) StartAutoRefresh() {
+	if a.stopTicker != nil {
+		return
+	}
+	a.stopTicker = make(chan struct{})
+
 	go func() {
-		// Initial Delay for UI setup
-		time.Sleep(100 * time.Millisecond)
+		// Initial update
+		// We use a small delay on first run to let UI settle if needed, but only for the first ever run
+		// subsequent restarts of auto-refresh might want immediate effect or wait for next tick.
+		// Let's rely on tick.
+		
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		// Immediate update on start
 		a.RefreshCurrentView()
 		a.updateHeader()
 
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			a.RefreshCurrentView()
-			a.updateHeader()
+		for {
+			select {
+			case <-ticker.C:
+				a.RefreshCurrentView()
+				a.updateHeader()
+			case <-a.stopTicker:
+				return
+			}
 		}
 	}()
+}
 
-	return a.TviewApp.SetRoot(a.Layout, true).Run()
+func (a *App) StopAutoRefresh() {
+	if a.stopTicker != nil {
+		close(a.stopTicker)
+		a.stopTicker = nil
+	}
 }
 
 func (a *App) initUI() {
@@ -308,6 +353,10 @@ func (a *App) GetTviewApp() *tview.Application {
 	return a.TviewApp
 }
 
+func (a *App) GetScreen() tcell.Screen {
+	return a.Screen
+}
+
 func (a *App) GetDocker() *dao.DockerClient {
 	return a.Docker
 }
@@ -418,4 +467,61 @@ func (a *App) CloseInspector() {
 
 	a.RestoreFocus()
 	a.UpdateShortcuts()
+}
+
+func (a *App) ActionPause() {
+	a.SetPaused(true)
+}
+
+func (a *App) ActionResume() {
+	a.SetPaused(false)
+	a.TviewApp.Draw() // Force redraw
+}
+
+func (a *App) SetPaused(paused bool) {
+	a.pauseMx.Lock()
+	defer a.pauseMx.Unlock()
+	a.paused = paused
+}
+
+func (a *App) IsPaused() bool {
+	a.pauseMx.RLock()
+	defer a.pauseMx.RUnlock()
+	return a.paused
+}
+
+func (a *App) SafeQueueUpdateDraw(f func()) {
+	a.pauseMx.RLock()
+	isPaused := a.paused
+	a.pauseMx.RUnlock()
+
+	if isPaused {
+		return
+	}
+
+	a.TviewApp.QueueUpdateDraw(func() {
+		a.pauseMx.RLock()
+		isPausedNow := a.paused
+		a.pauseMx.RUnlock()
+
+		if isPausedNow {
+			return
+		}
+		f()
+	})
+}
+
+func (a *App) RunInBackground(task func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.TviewApp.QueueUpdateDraw(func() {
+					a.Flash.SetText(fmt.Sprintf("[red]Background task panic: %v", r))
+					// Also print to stdout for debugging if app is still running or logs are captured
+					fmt.Printf("Background task panic: %v\nStack trace:\n%s\n", r, string(debug.Stack()))
+				})
+			}
+		}()
+		task()
+	}()
 }

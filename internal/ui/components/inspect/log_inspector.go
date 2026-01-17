@@ -49,9 +49,9 @@ func NewLogInspector(id, subject, resourceType string) *LogInspector {
 		AutoScroll:   true,
 		Wrap:         false,
 		Timestamps:   false,
-		since:        "5m",
-		tail:         "all",
-		sinceLabel:   "5m",
+		since:        "",
+		tail:         "200",
+		sinceLabel:   "Tail",
 	}
 }
 

@@ -139,22 +139,32 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 				return
 			}
 
-			app.GetTviewApp().Suspend(func() {
-				editor := os.Getenv("EDITOR")
-				if editor == "" {
-					editor = "vi" // Fallback
+		app.GetTviewApp().Suspend(func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Editor panic: %v\n", r)
 				}
+			}()
 
-				cmd := exec.Command(editor, fileToEdit)
-				cmd.Stdin = os.Stdin
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				
-				if err := cmd.Run(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error running editor: %v\nPress Enter to continue...", err)
-					fmt.Scanln()
-				}
-			})
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vi" // Fallback
+			}
+
+			fmt.Print("\033[H\033[2J") // Clear screen before editor
+
+			cmd := exec.Command(editor, fileToEdit)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error running editor: %v\nPress Enter to continue...", err)
+				fmt.Scanln()
+			}
+			
+			fmt.Print("\033[H\033[2J") // Clear screen after editor
+		})
 		}
 	}
 }

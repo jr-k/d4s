@@ -33,9 +33,15 @@ func (a *App) RefreshCurrentView() {
 	// 1. Immediate Updates (Optimistic UI) - Inside Queue not needed if Ticker calls this?
 	// Ticker runs in BG. `UpdateShortcuts` accesses UI. Should be queued.
 	// But let's revert to "working but racy" to fix the "broken views" regression first.
+	// a.UpdateShortcuts() -> Moved inside SafeQueueUpdateDraw if needed, but keeping as is for now unless asked.
+	// NOTE: UpdateShortcuts() calls existing UI methods which might not be thread safe from ticker.
 	a.UpdateShortcuts()
 	
-	go func() {
+	a.RunInBackground(func() {
+		if a.IsPaused() {
+			return
+		}
+
 		var err error
 		var data []dao.Resource
 		var headers []string
@@ -45,7 +51,12 @@ func (a *App) RefreshCurrentView() {
 			data, err = v.FetchFunc(a)
 		}
 
-		a.TviewApp.QueueUpdateDraw(func() {
+		// Check pause again after fetching (fetching can take time)
+		if a.IsPaused() {
+			return
+		}
+
+		a.SafeQueueUpdateDraw(func() {
 			// Check if page changed while fetching?
 			currentPage, _ := a.Pages.GetFrontPage()
 			if currentPage != page {
@@ -95,7 +106,7 @@ func (a *App) RefreshCurrentView() {
 				a.Flash.SetText(status)
 			}
 		})
-	}()
+	})
 }
 
 func (a *App) formatViewTitle(viewName string, countStr string, filter string) string {

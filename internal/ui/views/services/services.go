@@ -181,7 +181,7 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 		
 		app.SetFlashText(fmt.Sprintf("[yellow]Scaling %s to %d...", id, replicas))
 		
-		go func() {
+		app.RunInBackground(func() {
 			err := app.GetDocker().ScaleService(id, replicas)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -191,6 +191,6 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }

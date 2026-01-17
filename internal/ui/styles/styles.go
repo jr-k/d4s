@@ -13,7 +13,7 @@ var (
 	ColorWhite = tcell.NewRGBColor(255, 255, 255)
 
 	ColorHeader = tcell.NewRGBColor(255, 255, 255) // White
-	ColorHeaderSort = tcell.NewRGBColor(137, 206, 250) // Blue
+	ColorHeaderFocus = tcell.NewRGBColor(255, 184, 108) // Orange
 
 	// Header
 	ColorTitle       = tcell.NewRGBColor(189, 147, 249) // Purple

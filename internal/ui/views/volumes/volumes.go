@@ -63,7 +63,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 func PruneAction(app common.AppController) {
 	dialogs.ShowConfirmation(app, "PRUNE", "Volumes", func(force bool) {
 		app.SetFlashText("[yellow]Pruning Volumes...")
-		go func() {
+		app.RunInBackground(func() {
 			err := Prune(app)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -73,7 +73,7 @@ func PruneAction(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
 
@@ -107,7 +107,7 @@ func Remove(id string, force bool, app common.AppController) error {
 func Create(app common.AppController) {
 	dialogs.ShowInput(app, "Create Volume", "Volume Name: ", "", func(text string) {
 		app.SetFlashText(fmt.Sprintf("[yellow]Creating volume %s...", text))
-		go func() {
+		app.RunInBackground(func() {
 			err := app.GetDocker().CreateVolume(text)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -121,7 +121,7 @@ func Create(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
 
@@ -162,7 +162,7 @@ func Open(app common.AppController, res dao.Resource) {
 
 	app.SetFlashText(fmt.Sprintf("[yellow]Opening %s...", path))
 
-	go func() {
+	app.RunInBackground(func() {
 		err := cmd.Run()
 		app.GetTviewApp().QueueUpdateDraw(func() {
 			if err != nil {
@@ -171,7 +171,7 @@ func Open(app common.AppController, res dao.Resource) {
 				app.SetFlashText(fmt.Sprintf("[green]Opened %s", path))
 			}
 		})
-	}()
+	})
 }
 
 func Inspect(app common.AppController, id string) {

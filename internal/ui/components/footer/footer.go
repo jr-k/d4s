@@ -32,9 +32,9 @@ func (f *FlashComponent) Append(text string) {
 	// Assuming the tag starts with " [black:#50fa7b:b] <copied:" and ends with "[-] "
 	
 	// Strategy: Split by the start of our known copy tag style
-	// Tag format from app_actions: [black:#50fa7b:b] <copied:
+	// Tag format from app_actions: [black:#50fa7b] <copied:
 	
-	const tagStart = " [black:#50fa7b:b] <copied:"
+	const tagStart = " [black:#50fa7b] <copied:"
 	
 	if idx := strings.Index(current, tagStart); idx != -1 {
 		current = current[:idx]

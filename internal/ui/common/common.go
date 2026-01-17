@@ -26,6 +26,7 @@ type AppController interface {
 	// Accessors
 	GetPages() *tview.Pages
 	GetTviewApp() *tview.Application
+	GetScreen() tcell.Screen
 	GetDocker() *dao.DockerClient
 
 	// Actions
@@ -53,6 +54,14 @@ type AppController interface {
 	// Inspector Management
 	OpenInspector(inspector Inspector)
 	CloseInspector()
+
+	// Async Task Management
+	RunInBackground(task func())
+	SetPaused(paused bool)
+
+	// Refactoring: Auto Refresh Control
+	StartAutoRefresh()
+	StopAutoRefresh()
 }
 
 func FormatSCHeader(key, action string) string {

@@ -56,7 +56,7 @@ func (s Service) GetStatusColor() (tcell.Color, tcell.Color) {
 			} else if running > desired {
 				return tcell.ColorMediumPurple, styles.ColorBlack
 			} else if desired > 0 {
-				return styles.ColorStatusGreen, styles.ColorBlack
+				return styles.ColorIdle, styles.ColorBlack
 			}
 		}
 	}

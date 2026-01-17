@@ -85,7 +85,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 func PruneAction(app common.AppController) {
 	dialogs.ShowConfirmation(app, "PRUNE", "Networks", func(force bool) {
 		app.SetFlashText("[yellow]Pruning Networks...")
-		go func() {
+		app.RunInBackground(func() {
 			err := Prune(app)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -95,7 +95,7 @@ func PruneAction(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
 
@@ -129,7 +129,7 @@ func Remove(id string, force bool, app common.AppController) error {
 func Create(app common.AppController) {
 	dialogs.ShowInput(app, "Create Network", "Network Name: ", "", func(text string) {
 		app.SetFlashText(fmt.Sprintf("[yellow]Creating network %s...", text))
-		go func() {
+		app.RunInBackground(func() {
 			err := app.GetDocker().CreateNetwork(text)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
@@ -146,6 +146,6 @@ func Create(app common.AppController) {
 					app.RefreshCurrentView()
 				}
 			})
-		}()
+		})
 	})
 }
