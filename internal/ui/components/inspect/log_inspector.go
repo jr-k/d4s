@@ -27,11 +27,11 @@ type LogInspector struct {
 	
 	// Settings
 	AutoScroll   bool
-	Wrap         bool
 	Timestamps   bool
+	Wrap         bool // Restored
 	filter       string
 	since        string
-	tail         string // new field
+	tail         string 
 	sinceLabel   string
 	
 	// Control
@@ -47,8 +47,8 @@ func NewLogInspector(id, subject, resourceType string) *LogInspector {
 		Subject:      subject,
 		ResourceType: resourceType,
 		AutoScroll:   true,
-		Wrap:         false,
 		Timestamps:   false,
+		Wrap:         false, // Default to false
 		since:        "",
 		tail:         "200",
 		sinceLabel:   "Tail",
@@ -138,7 +138,8 @@ func (i *LogInspector) OnMount(app common.AppController) {
 	i.TextView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
-		SetWordWrap(i.Wrap).
+		SetWordWrap(i.Wrap). // Only affects word boundary, not line wrapping per se if SetWrap matches
+		SetWrap(i.Wrap).     // CRITICAL: SetWrap(false) allows horizontal scrolling
 		SetTextColor(styles.ColorIdle)
 	
 	i.TextView.SetChangedFunc(func() {
@@ -190,19 +191,24 @@ func (i *LogInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 	case 's':
 		i.AutoScroll = !i.AutoScroll
 		i.updateTitle()
-		if i.AutoScroll {
+		if i.AutoScroll && i.TextView != nil {
 			i.TextView.ScrollToEnd()
 		}
 	case 'w':
 		i.Wrap = !i.Wrap
-		i.TextView.SetWordWrap(i.Wrap)
 		i.updateTitle()
+		if i.TextView != nil {
+			i.TextView.SetWordWrap(i.Wrap)
+			i.TextView.SetWrap(i.Wrap)
+		}
 	case 't':
 		i.Timestamps = !i.Timestamps
 		i.updateTitle()
 		i.startStreaming() // Restart with new setting
 	case 'C': // Shift+c
-		i.TextView.Clear()
+		if i.TextView != nil {
+			i.TextView.Clear()
+		}
 	case '0':
 		i.setSince("tail")
 	case '1':
@@ -262,8 +268,10 @@ func (i *LogInspector) startStreaming() {
 	ctx, cancel := context.WithCancel(context.Background())
 	i.cancelFunc = cancel
 
-	i.TextView.Clear()
-	i.TextView.SetText("[yellow]Loading logs...\n")
+	if i.TextView != nil {
+		i.TextView.Clear()
+		i.TextView.SetText("[yellow]Loading logs...\n")
+	}
 
 	// Channels for buffering
 	logCh := make(chan string, 1000)
@@ -297,7 +305,9 @@ func (i *LogInspector) startStreaming() {
 
 		if err != nil {
 			i.App.GetTviewApp().QueueUpdateDraw(func() {
-				i.TextView.SetText(fmt.Sprintf("[red]Error fetching logs: %v", err))
+				if i.TextView != nil {
+					i.TextView.SetText(fmt.Sprintf("[red]Error fetching logs: %v", err))
+				}
 			})
 			return
 		}
@@ -336,24 +346,34 @@ func (i *LogInspector) startStreaming() {
 			if len(buffer) == 0 {
 				return
 			}
-			text := strings.Join(buffer, "\n") + "\n"
-			buffer = buffer[:0] // Clear buffer but keep capacity
+			// text := strings.Join(buffer, "\n") + "\n" // Unused in Table approach
+			// buffer handled directly
 
 			i.App.GetTviewApp().QueueUpdateDraw(func() {
+				if i.TextView == nil {
+					return
+				}
+				
 				if firstWrite {
 					i.TextView.Clear()
 				}
-				// We append to the existing text
-				// tview.TextView is an io.Writer
-				w := i.TextView
-				fmt.Fprint(w, text)
+				
+				// Calculate starting row
+				text := strings.Join(buffer, "\n") + "\n"
+				
+				// Apply color - ColorIdle is Blueish
+				fmt.Fprint(i.TextView, text)
 
 				if firstWrite {
 					if !i.AutoScroll {
 						i.TextView.ScrollToBeginning()
 					}
 					firstWrite = false
+				} else if i.AutoScroll {
+					i.TextView.ScrollToEnd()
 				}
+				
+				buffer = buffer[:0] // Clear buffer but keep capacity
 			})
 		}
 
