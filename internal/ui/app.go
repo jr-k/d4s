@@ -287,6 +287,13 @@ func (a *App) initUI() {
 
 	// Global Shortcuts
 	a.TviewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		
+		// Priority 0: Global Exit on Ctrl+C (Must be first)
+		if event.Key() == tcell.KeyCtrlC {
+			a.TviewApp.Stop()
+			return nil
+		}
+
 		if a.CmdLine.HasFocus() {
 			return event
 		}
@@ -322,11 +329,6 @@ func (a *App) initUI() {
 			}
 
 			return event
-		}
-
-		if event.Key() == tcell.KeyCtrlC {
-			a.TviewApp.Stop()
-			return nil
 		}
 
 		// logMsg := fmt.Sprintf("Key: %v (rune: %q) | Modifiers: %v\n", event.Key(), event.Rune(), event.Modifiers())

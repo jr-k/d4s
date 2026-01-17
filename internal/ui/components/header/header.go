@@ -98,6 +98,9 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 
 	statsWidth := 0
 	for i, line := range lines {
+		if i >= h.StatsView.GetRowCount() {
+			h.StatsView.InsertRow(i)
+		}
 		h.StatsView.SetCell(i, 0, tview.NewTableCell(line).
 			SetBackgroundColor(styles.ColorBg).
 			SetAlign(tview.AlignLeft))
@@ -112,6 +115,9 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 	// 2. Logo View
 	logoWidth := 0
 	for i, line := range common.GetLogo() {
+		if i >= h.LogoView.GetRowCount() {
+			h.LogoView.InsertRow(i)
+		}
 		cell := tview.NewTableCell(line).
 			SetAlign(tview.AlignLeft).
 			SetBackgroundColor(styles.ColorBg)
@@ -179,6 +185,9 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 		// Add spacer column between groups
 		if i > 0 {
 			for row := 0; row < maxPerCol; row++ {
+				if row >= h.ShortcutsView.GetRowCount() {
+					h.ShortcutsView.InsertRow(row)
+				}
 				h.ShortcutsView.SetCell(row, colIndex, tview.NewTableCell(groupSpacer).SetBackgroundColor(styles.ColorBg))
 			}
 			colIndex++
@@ -186,6 +195,9 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 
 		// Fill all 6 rows for this column pair
 		for row := 0; row < maxPerCol; row++ {
+			if row >= h.ShortcutsView.GetRowCount() {
+				h.ShortcutsView.InsertRow(row)
+			}
 			var aliasText, labelText string
 			if row < len(colShortcuts) {
 				shortcut := colShortcuts[row]
