@@ -58,6 +58,11 @@ func GetShortcuts() []string {
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
 	
+	if event.Key() == tcell.KeyCtrlD {
+		DeleteAction(app, v)
+		return nil
+	}
+	
 	switch event.Rune() {
 	case 'e':
 		Env(app, v)
@@ -95,11 +100,6 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'p':
 		PruneAction(app)
-		return nil
-	}
-	
-	if event.Key() == tcell.KeyCtrlD {
-		DeleteAction(app, v)
 		return nil
 	}
 	

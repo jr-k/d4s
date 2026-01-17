@@ -53,6 +53,9 @@ type App struct {
 	pauseMx    sync.RWMutex
 	paused     bool
 	stopTicker chan struct{}
+	
+	flashMx    sync.Mutex
+	flashExpiry time.Time
 }
 
 // Ensure App implements AppController interface
@@ -337,7 +340,7 @@ func (a *App) initUI() {
 			return nil
 		}
 
-		if event.Key() == tcell.KeyHome || (event.Key() == tcell.KeyCtrlA) && event.Modifiers() == tcell.ModCtrl {
+		if event.Key() == tcell.KeyHome || (event.Key() == tcell.KeyCtrlA && event.Modifiers() == tcell.ModCtrl) {
 			current, _ := a.Pages.GetFrontPage()
 			if current == styles.TitleAliases {
 				// If already on aliases, go back to previous view
@@ -534,6 +537,20 @@ func (a *App) IsPaused() bool {
 	a.pauseMx.RLock()
 	defer a.pauseMx.RUnlock()
 	return a.paused
+}
+
+func (a *App) SetFlashMessage(text string, duration time.Duration) {
+	a.flashMx.Lock()
+	a.flashExpiry = time.Now().Add(duration)
+	a.flashMx.Unlock()
+	
+	a.Flash.SetText(text)
+}
+
+func (a *App) IsFlashLocked() bool {
+	a.flashMx.Lock()
+	defer a.flashMx.Unlock()
+	return time.Now().Before(a.flashExpiry)
 }
 
 func (a *App) SafeQueueUpdateDraw(f func()) {

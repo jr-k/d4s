@@ -78,16 +78,16 @@ func (m *Manager) List() ([]common.Resource, error) {
 
 	var res []common.Resource
 	for _, n := range list {
-		internal := "[gray]No[-]"
+		internal := "No"
 		if n.Internal {
-			internal = "[green]Yes[-]"
+			internal = "Yes"
 		}
 		var subnets []string
 		for _, conf := range n.IPAM.Config {
 			if conf.Subnet != "" {
 				s := conf.Subnet
 				if parts := strings.Split(s, "/"); len(parts) == 2 {
-					s = fmt.Sprintf("%s[gray]/%s[-]", parts[0], parts[1])
+					s = fmt.Sprintf("%s/%s", parts[0], parts[1])
 				}
 				subnets = append(subnets, s)
 			}
