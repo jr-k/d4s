@@ -4,16 +4,16 @@ go 1.25.0
 
 require (
 	github.com/alecthomas/chroma/v2 v2.22.0
+	github.com/atotto/clipboard v0.1.4
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/guptarohit/asciigraph v0.7.3
-	github.com/rivo/tview v0.42.0
+	github.com/rivo/tview v0.0.0-00010101000000-000000000000
 	golang.org/x/net v0.47.0
 )
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -48,3 +48,5 @@ require (
 	golang.org/x/time v0.14.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
+
+replace github.com/rivo/tview => github.com/jr-k/tview v0.0.0-20260117030207-e6ad55b7e52d
