@@ -133,3 +133,5 @@ Meet ( •_•) **Citrus**, our vitamin-packed helper ensuring your containers s
 
 ---
 *Built with Go & Tview. Inspired by the legendary K9s.*
+*d4s is made possible by a rich set of open source projects and libraries. We are truly thankful to the OSS contributors who generously share their time, care, and effort to support and allow this work.*
+
