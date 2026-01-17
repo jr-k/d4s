@@ -14,28 +14,28 @@ func (a *App) ActivateCmd(initial string) {
 
 func (a *App) ExecuteCmd(cmd string) {
 	cmd = strings.TrimPrefix(cmd, ":")
-	
+
 	switchToRoot := func(title string) {
 		a.ActiveScope = nil
 		a.SwitchTo(title)
 	}
-	
+
 	switch cmd {
 	case "q", "quit":
 		a.TviewApp.Stop()
-	case "c", "co", "con", "containers":
+	case "c", "co", "con", "container", "containers":
 		switchToRoot(styles.TitleContainers)
-	case "i", "im", "img", "images":
+	case "i", "im", "img", "image", "images":
 		switchToRoot(styles.TitleImages)
-	case "v", "vo", "vol", "volumes":
+	case "v", "vo", "vol", "volume", "volumes":
 		switchToRoot(styles.TitleVolumes)
-	case "n", "ne", "net", "networks":
+	case "n", "ne", "net", "network", "networks":
 		switchToRoot(styles.TitleNetworks)
-	case "s", "se", "svc", "services":
+	case "s", "se", "svc", "service", "services":
 		switchToRoot(styles.TitleServices)
 	case "no", "node", "nodes":
 		switchToRoot(styles.TitleNodes)
-	case "p", "cp", "compose", "projects":
+	case "p", "cp", "compose", "project", "projects":
 		switchToRoot(styles.TitleCompose)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
@@ -58,17 +58,16 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 
 		a.Pages.SwitchToPage(viewName)
 		a.ActiveFilter = "" // Reset filter on view switch
-		
+
 		// Update Command Line (Reset)
 		a.CmdLine.Reset()
-		
+
 		go a.RefreshCurrentView()
 		a.updateHeader()
 		a.TviewApp.SetFocus(a.Pages) // Usually focus page, but actually table
-		
+
 		a.TviewApp.SetFocus(v.Table)
 	} else {
 		a.Flash.SetText(fmt.Sprintf("[red]Unknown view: %s", viewName))
 	}
 }
-
