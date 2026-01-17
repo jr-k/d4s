@@ -114,6 +114,16 @@ var availableCommands = []string{
 	"nodes",
 	"compose",
 	"help",
+	"aliases",
+	"q",
+	"c",
+	"i",
+	"v",
+	"n",
+	"s",
+	"no",
+	"p",
+	"a",
 }
 
 // findBestSuggestion finds the best matching command for autocompletion

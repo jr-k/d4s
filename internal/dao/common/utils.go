@@ -106,13 +106,13 @@ func FormatTime(ts int64) string {
 	timeStr := t.Format("15:04")
 
 	if days == 0 {
-		return fmt.Sprintf("[dim::b]%s[-] %s", dateStr, timeStr)
+		return fmt.Sprintf("%s %s", dateStr, timeStr)
 	}
 	if days == 1 {
-		return fmt.Sprintf("[dim]%s[-] %s", dateStr, timeStr)
+		return fmt.Sprintf("%s %s", dateStr, timeStr)
 	}
 
-	return fmt.Sprintf("[dim]%s[-] %s", dateStr, timeStr)
+	return fmt.Sprintf("%s %s", dateStr, timeStr)
 }
 
 func FormatBytes(b int64) string {

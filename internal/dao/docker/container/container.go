@@ -167,9 +167,9 @@ func (m *Manager) updateStats(containers []types.Container) {
 				cpuStr := fmt.Sprintf("%.1f%%", cpuPct)
 				memStr := ""
 				if limit > 0 {
-					memStr = fmt.Sprintf("%6.1f%% ([#6272a4]%s[-])", float64(mem)/float64(limit)*100.0, common.FormatBytesFixed(int64(mem)))
+					memStr = fmt.Sprintf("%6.1f%% (%s)", float64(mem)/float64(limit)*100.0, common.FormatBytesFixed(int64(mem)))
 				} else {
-					memStr = fmt.Sprintf("%6.1f%% ([#6272a4]%s[-])", 0.0, common.FormatBytesFixed(int64(mem)))
+					memStr = fmt.Sprintf("%6.1f%% (%s)", 0.0, common.FormatBytesFixed(int64(mem)))
 				}
 
 				m.statsMutex.Lock()
@@ -248,12 +248,12 @@ func (m *Manager) List() ([]common.Resource, error) {
 		// if len(cmd) > 20 {
 		// 	cmd = cmd[:20] + "..."
 		// }
-		cmd = fmt.Sprintf("[gray]%s[-]", cmd)
+		cmd = fmt.Sprintf("%s", cmd)
 
 		imageName := c.Image
 		parts := strings.SplitN(imageName, ":", 2)
 		if len(parts) == 2 {
-			imageName = fmt.Sprintf("%s:[grey]%s[-]", parts[0], parts[1])
+			imageName = fmt.Sprintf("%s:%s", parts[0], parts[1])
 		}
 
 		res[i] = Container{

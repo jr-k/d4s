@@ -30,7 +30,14 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 	}
 	a.RefreshCurrentView()
 
-	a.Flash.SetText(fmt.Sprintf("[yellow]%s %d items...", actionName, len(ids)))
+	// Use temporary flash message that locks manual updates from RefreshCurrentView
+	// Also stop AutoRefresh to prevent list update from clearing the red selection
+	a.StopAutoRefresh()
+	plural := "s"
+	if len(ids) == 1 {
+		plural = ""
+	}
+	a.SetFlashMessage(fmt.Sprintf(" [red]%s %d item%s...", actionName, len(ids), plural), 10*time.Minute)
 
 	a.RunInBackground(func() {
 		var errs []string
@@ -40,15 +47,27 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 			}
 		}
 
+		time.Sleep(2 * time.Second)
+
 		a.TviewApp.QueueUpdateDraw(func() {
 			for _, id := range ids {
 				view.ClearActionState(id)
 			}
+			
+			// Resume AutoRefresh first
+			a.StartAutoRefresh()
 
 			if len(errs) > 0 {
+				a.SetFlashMessage(fmt.Sprintf(" [red]%s completed with errors", actionName), 3*time.Second)
 				dialogs.ShowResultModal(a, actionName, len(ids)-len(errs), errs)
 			} else {
-				a.Flash.SetText(fmt.Sprintf("[green]%s %d items done", actionName, len(ids)))
+				plural := "s"
+				if len(ids) == 1 {
+					plural = ""
+				}
+				// Show success message for 3 seconds
+				a.SetFlashMessage(fmt.Sprintf(" [#50fa7b]%s %d item%s done", actionName, len(ids), plural), 2*time.Second)
+				
 				// Clear selection on success?
 				view.SelectedIDs = make(map[string]bool)
 				delay := view.PopRefreshDelay()

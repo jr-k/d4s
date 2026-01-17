@@ -16,6 +16,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
 	"github.com/jr-k/d4s/internal/ui/styles"
+	"github.com/jr-k/d4s/internal/ui/views/aliases"
 	"github.com/jr-k/d4s/internal/ui/views/compose"
 	"github.com/jr-k/d4s/internal/ui/views/containers"
 	"github.com/jr-k/d4s/internal/ui/views/images"
@@ -46,11 +47,15 @@ type App struct {
 	ActiveFilter    string
 	ActiveScope     *common.Scope
 	ActiveInspector common.Inspector
+	PreviousView    string
 
 	// Concurrency
 	pauseMx    sync.RWMutex
 	paused     bool
 	stopTicker chan struct{}
+	
+	flashMx    sync.Mutex
+	flashExpiry time.Time
 }
 
 // Ensure App implements AppController interface
@@ -247,6 +252,16 @@ func (a *App) initUI() {
 	}
 	a.Views[styles.TitleCompose] = vCompose
 
+	// Aliases
+	vAliases := view.NewResourceView(a, styles.TitleAliases)
+	vAliases.Headers = aliases.Headers
+	vAliases.FetchFunc = aliases.Fetch
+	vAliases.ShortcutsFunc = aliases.GetShortcuts
+	vAliases.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return aliases.InputHandler(vAliases, event)
+	}
+	a.Views[styles.TitleAliases] = vAliases
+
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
 	}
@@ -307,6 +322,40 @@ func (a *App) initUI() {
 			}
 
 			return event
+		}
+
+		if event.Key() == tcell.KeyCtrlC {
+			a.TviewApp.Stop()
+			return nil
+		}
+
+		// logMsg := fmt.Sprintf("Key: %v (rune: %q) | Modifiers: %v\n", event.Key(), event.Rune(), event.Modifiers())
+		// f, err := os.OpenFile("d4s.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		// if err == nil {
+		// 	_, _ = f.WriteString(logMsg)
+		// 	_ = f.Close()
+		// }
+
+		if event.Key() == tcell.KeyCtrlE && event.Modifiers() == tcell.ModCtrl {
+			return nil
+		}
+
+		if event.Key() == tcell.KeyHome || (event.Key() == tcell.KeyCtrlA && event.Modifiers() == tcell.ModCtrl) {
+			current, _ := a.Pages.GetFrontPage()
+			if current == styles.TitleAliases {
+				// If already on aliases, go back to previous view
+				if a.PreviousView != "" {
+					a.SwitchToWithSelection(a.PreviousView, false)
+				} else {
+					// Fallback to containers if no previous view
+					a.SwitchToWithSelection(styles.TitleContainers, false)
+				}
+			} else {
+				// Go to aliases
+				// We use SwitchToWithSelection to populate PreviousView and handle focus
+				a.SwitchToWithSelection(styles.TitleAliases, false) 
+			}
+			return nil
 		}
 
 		// Delegate to Active View Input Handler
@@ -488,6 +537,20 @@ func (a *App) IsPaused() bool {
 	a.pauseMx.RLock()
 	defer a.pauseMx.RUnlock()
 	return a.paused
+}
+
+func (a *App) SetFlashMessage(text string, duration time.Duration) {
+	a.flashMx.Lock()
+	a.flashExpiry = time.Now().Add(duration)
+	a.flashMx.Unlock()
+	
+	a.Flash.SetText(text)
+}
+
+func (a *App) IsFlashLocked() bool {
+	a.flashMx.Lock()
+	defer a.flashMx.Unlock()
+	return time.Now().Before(a.flashExpiry)
 }
 
 func (a *App) SafeQueueUpdateDraw(f func()) {

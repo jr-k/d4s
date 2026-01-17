@@ -28,16 +28,16 @@ func GetShortcuts() []string {
 
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
+	if event.Key() == tcell.KeyCtrlD {
+		DeleteAction(app, v)
+		return nil
+	}
 	switch event.Rune() {
 	case 'p':
 		PruneAction(app)
 		return nil
 	case 'd':
 		app.InspectCurrentSelection()
-		return nil
-	}
-	if event.Key() == tcell.KeyCtrlD {
-		DeleteAction(app, v)
 		return nil
 	}
 	return event

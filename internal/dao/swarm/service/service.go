@@ -138,7 +138,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		if idx := strings.LastIndex(imageName, ":"); idx != -1 {
 			tag := imageName[idx:]
 			if tag == ":latest" {
-				imageName = imageName[:idx] + "[gray]" + tag + "[-]"
+				imageName = imageName[:idx] + "" + tag + ""
 			}
 		}
 

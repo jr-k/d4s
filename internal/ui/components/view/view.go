@@ -596,7 +596,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 				}
 			}
 
-		displayText := stripFormattingTags(text)
+		displayText := text
 
 		// Multi-Select Indicator
 		if j == 0 && isSelected {

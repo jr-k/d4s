@@ -70,4 +70,5 @@ const (
 	TitleServices   = "Services"
 	TitleNodes      = "Nodes"
 	TitleCompose    = "Compose"
+	TitleAliases    = "Aliases"
 )

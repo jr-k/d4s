@@ -83,7 +83,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 			if len(parts) == 2 {
 				// Image Name: [cyan]name[-]:[white]tag[-]
 				// But tview formatting...
-				tags = fmt.Sprintf("%s:[grey]%s[-]", parts[0], parts[1])
+				tags = fmt.Sprintf("%s:%s", parts[0], parts[1])
 			} else {
 				tags = t
 			}
