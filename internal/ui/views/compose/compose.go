@@ -139,6 +139,16 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 				return
 			}
 
+		// Stop any background refresh to prevent UI updates interfering with the editor
+		app.StopAutoRefresh()
+		// Still set paused flag as double safety for any lingering goroutines
+		app.SetPaused(true)
+
+		defer func() {
+			app.SetPaused(false)
+			app.StartAutoRefresh()
+		}()
+
 		app.GetTviewApp().Suspend(func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -165,6 +175,11 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 			
 			fmt.Print("\033[H\033[2J") // Clear screen after editor
 		})
+		
+		// Fix race conditions/glitches where screen isn't fully restored
+		if app.GetScreen() != nil {
+			app.GetScreen().Sync()
+		}
 		}
 	}
 }
