@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jr-k/d4s/internal/buildinfo"
@@ -74,6 +76,15 @@ func main() {
 	}
 
 	app := ui.NewApp()
+
+	// Handle signals for clean shutdown (SIGINT, SIGTERM)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		app.TviewApp.Stop()
+	}()
+
 	if err := app.Run(); err != nil {
 		fmt.Printf("Error running D4s: %v\n", err)
 		os.Exit(1)
