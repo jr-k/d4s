@@ -67,6 +67,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 
 	// Clear Sub-Views
 	h.StatsView.Clear()
+	h.ShortcutsView.Clear()
 	// Shortcuts cleared only if changed
 	h.LogoView.Clear()
 
