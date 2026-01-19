@@ -266,8 +266,8 @@ func Describe(app common.AppController, v *view.ResourceView) {
 
 func Shell(app common.AppController, id string) {
 	items := []dialogs.PickerItem{
-		{Description: "/bin/bash", Label: "Bash", Value: "/bin/bash", Shortcut: '1'},
-		{Description: "/bin/sh", Label: "Sh", Value: "/bin/sh", Shortcut: '2'},
+		{Description: "bash", Label: "Bash", Value: "bash", Shortcut: '1'},
+		{Description: "sh", Label: "Sh", Value: "sh", Shortcut: '2'},
 	}
 
 	dialogs.ShowPicker(app, "Shell Picker", items, func(shell string) {
