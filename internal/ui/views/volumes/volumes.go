@@ -29,6 +29,7 @@ func Fetch(app common.AppController) ([]dao.Resource, error) {
 
 func GetShortcuts() []string {
 	return []string{
+		common.FormatSCHeader("s", "Shell"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("o", "Open"),
 		common.FormatSCHeader("a", "Add"),
@@ -44,6 +45,13 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	switch event.Rune() {
+	case 's':
+		// Shell
+		id, err := v.GetSelectedID()
+		if err == nil {
+			Shell(app, id)
+		}
+		return nil
 	case 'o':
 		OpenAction(app, v)
 		return nil
@@ -198,4 +206,43 @@ func Inspect(app common.AppController, id string) {
 	}
 
 	app.OpenInspector(inspect.NewTextInspector("Describe volume", subject, content, "json"))
+}
+
+func Shell(app common.AppController, id string) {
+	app.StopAutoRefresh()
+	app.SetPaused(true)
+
+	defer func() {
+		app.SetPaused(false)
+		app.StartAutoRefresh()
+	}()
+
+	app.GetTviewApp().Suspend(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Shell panic: %v\n", r)
+			}
+		}()
+
+		fmt.Print("\033[H\033[2J")
+		fmt.Printf("Mounting volume %s in temporary alpine container...\n", id)
+
+		// Create a temporary container that mounts the volume
+		// We use sh as the shell
+		cmd := exec.Command("docker", "run", "--rm", "-it", "-v", id+":/data", "-w", "/data", "alpine", "sh")
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("\nError executing shell: %v\n", err)
+			fmt.Println("Ensure 'alpine' image is available or that you have permission to run containers.")
+			fmt.Println("Press Enter to continue...")
+			fmt.Scanln()
+		}
+	})
+
+	if app.GetScreen() != nil {
+		app.GetScreen().Sync()
+	}
 }
