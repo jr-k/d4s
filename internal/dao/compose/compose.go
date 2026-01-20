@@ -2,9 +2,10 @@ package compose
 
 import (
 	"fmt"
-	"strings"
-
+	"io"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -238,3 +239,49 @@ func (m *Manager) GetConfig(projectName string) (string, error) {
 	
 	return sb.String(), nil
 }
+
+func (m *Manager) Logs(projectName string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
+	args := []string{"compose", "-p", projectName, "logs", "-f"}
+	if tail != "" && tail != "all" {
+		args = append(args, "--tail", tail)
+	}
+	if timestamps {
+		args = append(args, "-t")
+	}
+	if since != "" {
+		args = append(args, "--since", since)
+	}
+
+	cmd := exec.Command("docker", args...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Merge stderr into stdout
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return &cmdReadCloser{pipe: stdout, cmd: cmd}, nil
+}
+
+type cmdReadCloser struct {
+	pipe io.ReadCloser
+	cmd  *exec.Cmd
+}
+
+func (c *cmdReadCloser) Read(p []byte) (n int, err error) {
+	return c.pipe.Read(p)
+}
+
+func (c *cmdReadCloser) Close() error {
+	if c.cmd.Process != nil {
+		c.cmd.Process.Kill()
+	}
+	return c.pipe.Close()
+}
+

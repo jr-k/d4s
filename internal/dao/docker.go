@@ -335,6 +335,10 @@ func (d *DockerClient) GetServiceLogs(id string, since string, tail string, time
 	return d.Service.Logs(id, since, tail, timestamps)
 }
 
+func (d *DockerClient) GetComposeLogs(projectName string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
+	return d.Compose.Logs(projectName, since, tail, timestamps)
+}
+
 func (d *DockerClient) ListTasksForNode(nodeID string) ([]swarm.Task, error) {
 	return d.Node.ListTasks(nodeID)
 }

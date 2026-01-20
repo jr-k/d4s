@@ -291,6 +291,9 @@ func (i *LogInspector) startStreaming() {
 				// TODO: Check Service Spec for TTY
 				reader = demux(reader)
 			}
+		} else if i.ResourceType == "compose" {
+			reader, err = docker.GetComposeLogs(i.ResourceID, i.since, i.tail, i.Timestamps)
+			// Compose logs via CLI are already plain text, no demux needed
 		} else {
 			// Container
 			reader, err = docker.GetContainerLogs(i.ResourceID, i.since, i.tail, i.Timestamps)

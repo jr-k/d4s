@@ -52,6 +52,7 @@ func Inspect(app common.AppController, id string) {
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("enter", "Containers"),
+		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
@@ -62,6 +63,9 @@ func GetShortcuts() []string {
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
 	switch event.Rune() {
+	case 'l':
+		Logs(app, v)
+		return nil
 	case 'd':
 		app.InspectCurrentSelection()
 		return nil
@@ -81,6 +85,16 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	return event
+}
+
+func Logs(app common.AppController, v *view.ResourceView) {
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		res := v.Data[row-1]
+		projName := res.GetID()
+
+		app.OpenInspector(inspect.NewLogInspector(projName, projName, "compose"))
+	}
 }
 
 func NavigateToContainers(app common.AppController, v *view.ResourceView) {
