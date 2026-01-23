@@ -62,7 +62,7 @@ echo "alias d4s='docker run --rm --pull always -it -v /var/run/docker.sock:/var/
 
 > Automated
 ```bash
-curl -fsSL https://d4scli.io/install.sh | sh
+curl -fsSL https://d4scli.io/install.sh | sh -s -- ~/.local/bin
 ```
 *The script installs downloaded binary to `$HOME/.local/bin` directory by default, but it can be changed by setting DIR environment variable.*
 
