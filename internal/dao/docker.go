@@ -367,7 +367,20 @@ func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, er
 	for _, r := range all {
 		if v, ok := r.(volume.Volume); ok {
 			if names[v.Name] {
-				filtered = append(filtered, r)
+				// Get destination from map (if I update map to store it)
+				dest := ""
+				for _, m := range json.Mounts {
+					if m.Type == "volume" && m.Name == v.Name {
+						dest = m.Destination
+						break
+					}
+				}
+
+				cv := volume.ContainerVolume{
+					Volume:      v,
+					Destination: dest,
+				}
+				filtered = append(filtered, cv)
 			}
 		}
 	}

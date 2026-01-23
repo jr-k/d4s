@@ -19,11 +19,16 @@ import (
 
 var Headers = []string{"NAME", "DRIVER", "SCOPE", "MOUNTPOINT", "CREATED", "SIZE"}
 
-func Fetch(app common.AppController) ([]dao.Resource, error) {
+func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	scope := app.GetActiveScope()
 	if scope != nil && scope.Type == "container" {
+		// Switch headers for Container Scope
+		v.Headers = []string{"NAME", "DRIVER", "SCOPE", "DESTINATION", "MOUNTPOINT", "CREATED", "SIZE"}
 		return app.GetDocker().ListVolumesForContainer(scope.Value)
 	}
+	
+	// Reset headers for Global Scope
+	v.Headers = Headers
 	return app.GetDocker().ListVolumes()
 }
 

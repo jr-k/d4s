@@ -18,7 +18,7 @@ import (
 
 var Headers = []string{"PROJECT", "READY", "STATUS", "CONFIG FILES"}
 
-func Fetch(app common.AppController) ([]dao.Resource, error) {
+func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	return app.GetDocker().ListCompose()
 }
 

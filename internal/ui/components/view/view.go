@@ -36,7 +36,7 @@ type ResourceView struct {
 	// Optional Overrides
 	InputHandler             func(event *tcell.EventKey) *tcell.EventKey
 	ShortcutsFunc            func() []string
-	FetchFunc                func(app common.AppController) ([]dao.Resource, error)
+	FetchFunc                func(app common.AppController, view *ResourceView) ([]dao.Resource, error)
 	InspectFunc              func(app common.AppController, id string)
 	RemoveFunc               func(id string, force bool, app common.AppController) error
 	PruneFunc                func(app common.AppController) error

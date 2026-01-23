@@ -123,8 +123,8 @@ func (a *App) RefreshCurrentView() {
 		var headers []string
 
 		if v.FetchFunc != nil {
+			data, err = v.FetchFunc(a, v)
 			headers = v.Headers
-			data, err = v.FetchFunc(a)
 		}
 
 		// Check pause again after fetching (fetching can take time)

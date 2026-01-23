@@ -14,7 +14,7 @@ import (
 
 var Headers = []string{"ID", "TAGS", "SIZE", "CONTAINERS", "CREATED"}
 
-func Fetch(app common.AppController) ([]dao.Resource, error) {
+func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	return app.GetDocker().ListImages()
 }
 

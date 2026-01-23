@@ -49,7 +49,7 @@ func (a Alias) GetDefaultSortColumn() string {
 	return "RESOURCE"
 }
 
-func Fetch(app common.AppController) ([]dao.Resource, error) {
+func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	// Static list of aliases
 	aliases := []Alias{
 		{Title: styles.TitleAliases, Resource: "aliases", Group: "internal"},

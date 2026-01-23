@@ -68,6 +68,16 @@ func (v Volume) GetDefaultSortColumn() string {
 	return "Name"
 }
 
+type ContainerVolume struct {
+	Volume
+	Destination string
+}
+
+func (v ContainerVolume) GetCells() []string {
+    // Note: This must match the headers defined in volumes.go when in container scope
+	return []string{v.Name, v.Driver, v.Scope, v.Destination, v.Mount, v.Created, v.Size}
+}
+
 func (m *Manager) List() ([]common.Resource, error) {
 	// 1. Get List of all volumes (fast & reliable)
 	list, err := m.cli.VolumeList(m.ctx, volTypes.ListOptions{})

@@ -16,7 +16,7 @@ import (
 
 var Headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS", "CREATED", "UPDATED"}
 
-func Fetch(app common.AppController) ([]dao.Resource, error) {
+func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	services, err := app.GetDocker().ListServices()
 	if err != nil {
 		return nil, err
