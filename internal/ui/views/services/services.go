@@ -108,7 +108,7 @@ func ViewAction(app common.AppController, v *view.ResourceView) {
 	
 	app.SetActiveScope(&common.Scope{
 		Type:       "service",
-		Value:      name,
+		Value:      trimSpaceLeftRightName,
 		Label:      trimSpaceLeftRightName,
 		OriginView: styles.TitleServices,
 	})
