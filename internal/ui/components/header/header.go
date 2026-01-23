@@ -103,7 +103,7 @@ func (h *HeaderComponent) Update(stats dao.HostStats, shortcuts []string) {
 		fmt.Sprintf("[orange]Host:    [white]%s", stats.Hostname),
 		fmt.Sprintf("[orange]User:    [white]%s", stats.User),
 		versionStr,
-		fmt.Sprintf("[orange]Context: [white]%s [dim](%s)", stats.Name, stats.Version),
+		fmt.Sprintf("[orange]Context: [white]%s [dim](%s)", stats.Context, stats.Version),
 		fmt.Sprintf("[orange]CPU:     [white]%s", cpuDisplay),
 		fmt.Sprintf("[orange]Mem:     [white]%s", memDisplay),
 	}

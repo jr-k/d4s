@@ -42,7 +42,7 @@ type HostStats struct {
 	LatestVersion string
 }
 
-func GetHostStats(cli *client.Client, ctx context.Context) (HostStats, error) {
+func GetHostStats(cli *client.Client, ctx context.Context, contextName string) (HostStats, error) {
 	info, err := cli.Info(ctx)
 	if err != nil {
 		return HostStats{}, err
@@ -69,16 +69,16 @@ func GetHostStats(cli *client.Client, ctx context.Context) (HostStats, error) {
 		MemPercent: "...", // Placeholder
 		Name:       info.Name,
 		Version:    info.ServerVersion,
-		Context:    "default",
+		Context:    contextName,
 		User:       user,
 		Hostname:   hostname,
 		D4SVersion: buildinfo.Version,
 	}, nil
 }
 
-func GetHostStatsWithUsage(cli *client.Client, ctx context.Context) (HostStats, error) {
+func GetHostStatsWithUsage(cli *client.Client, ctx context.Context, contextName string) (HostStats, error) {
 	// First get basic stats
-	stats, err := GetHostStats(cli, ctx)
+	stats, err := GetHostStats(cli, ctx, contextName)
 	if err != nil {
 		return stats, err
 	}

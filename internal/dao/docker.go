@@ -40,6 +40,7 @@ type ComposeProject = compose.ComposeProject
 type DockerClient struct {
 	Cli *client.Client
 	Ctx context.Context
+	ContextName string
 	
 	// Managers
 	Container *container.Manager
@@ -55,7 +56,7 @@ func NewDockerClient(contextName string) (*DockerClient, error) {
 	logger, cleanup := initLogger()
 	defer cleanup()
 
-	opts, err := resolveClientOpts(contextName, logger)
+	ctxName, opts, err := resolveClientOpts(contextName, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -67,15 +68,16 @@ func NewDockerClient(contextName string) (*DockerClient, error) {
 	ctx := context.Background()
 	
 	return &DockerClient{
-		Cli:       cli,
-		Ctx:       ctx,
-		Container: container.NewManager(cli, ctx),
-		Image:     image.NewManager(cli, ctx),
-		Volume:    volume.NewManager(cli, ctx),
-		Network:   network.NewManager(cli, ctx),
-		Service:   service.NewManager(cli, ctx),
-		Node:      node.NewManager(cli, ctx),
-		Compose:   compose.NewManager(cli, ctx),
+		Cli:         cli,
+		Ctx:         ctx,
+		ContextName: ctxName,
+		Container:   container.NewManager(cli, ctx),
+		Image:       image.NewManager(cli, ctx),
+		Volume:      volume.NewManager(cli, ctx),
+		Network:     network.NewManager(cli, ctx),
+		Service:     service.NewManager(cli, ctx),
+		Node:        node.NewManager(cli, ctx),
+		Compose:     compose.NewManager(cli, ctx),
 	}, nil
 }
 
@@ -87,7 +89,7 @@ func initLogger() (*log.Logger, func()) {
 	return log.New(f, "d4s-dao: ", log.LstdFlags), func() { f.Close() }
 }
 
-func resolveClientOpts(flagContext string, logger *log.Logger) ([]client.Opt, error) {
+func resolveClientOpts(flagContext string, logger *log.Logger) (string, []client.Opt, error) {
 	opts := []client.Opt{
 		client.WithAPIVersionNegotiation(),
 	}
@@ -95,14 +97,15 @@ func resolveClientOpts(flagContext string, logger *log.Logger) ([]client.Opt, er
 	// 1. Flag takes precedence
 	if flagContext != "" {
 		logger.Printf("Explicit context requested via flag: %s", flagContext)
-		return loadSpecificContext(flagContext, logger, opts)
+		opts, err := loadSpecificContext(flagContext, logger, opts)
+		return flagContext, opts, err
 	}
 
 	// 2. DOCKER_HOST takes precedence if no flag
 	if h := os.Getenv("DOCKER_HOST"); h != "" {
 		logger.Printf("DOCKER_HOST set to %s, using FromEnv", h)
 		opts = append(opts, client.FromEnv)
-		return opts, nil
+		return "env", opts, nil
 	}
 
 	// 3. Identify Target Context
@@ -122,11 +125,12 @@ func resolveClientOpts(flagContext string, logger *log.Logger) ([]client.Opt, er
 	if targetCtx == "default" {
 		logger.Println("Context is default, using FromEnv")
 		opts = append(opts, client.FromEnv)
-		return opts, nil
+		return "default", opts, nil
 	}
 
 	// 4. Load Specific Context
-	return loadSpecificContext(targetCtx, logger, opts)
+	opts, err := loadSpecificContext(targetCtx, logger, opts)
+	return targetCtx, opts, err
 }
 
 func loadSpecificContext(targetCtx string, logger *log.Logger, baseOpts []client.Opt) ([]client.Opt, error) {
@@ -304,11 +308,11 @@ func (d *DockerClient) GetComposeConfig(projectName string) (string, error) {
 
 // Common/Stats wrappers
 func (d *DockerClient) GetHostStats() (common.HostStats, error) {
-	return common.GetHostStats(d.Cli, d.Ctx)
+	return common.GetHostStats(d.Cli, d.Ctx, d.ContextName)
 }
 
 func (d *DockerClient) GetHostStatsWithUsage() (common.HostStats, error) {
-	return common.GetHostStatsWithUsage(d.Cli, d.Ctx)
+	return common.GetHostStatsWithUsage(d.Cli, d.Ctx, d.ContextName)
 }
 
 func (d *DockerClient) Inspect(resourceType, id string) (string, error) {
