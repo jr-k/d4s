@@ -198,7 +198,7 @@ func (a *App) RefreshCurrentView() {
 				}
 
 				if filter != "" {
-					status += fmt.Sprintf(` [black:#bd93f9] <filter: %s> [-]`, filter)
+					status += fmt.Sprintf(` [black:#bd93f9] <filter: %s> [-:-]`, filter)
 				}
 				
 				// Only update flash if not locked by temporary message
