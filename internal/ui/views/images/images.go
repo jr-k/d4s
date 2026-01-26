@@ -2,6 +2,10 @@ package images
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -22,6 +26,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("v", "Dive"),
 		common.FormatSCHeader("p", "Prune"),
 		common.FormatSCHeader("r", "Pull"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
@@ -35,6 +40,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	switch event.Rune() {
+	case 'v':
+		DiveAction(app, v)
+		return nil
 	case 'r':
 		PullAction(app, v)
 		return nil
@@ -223,4 +231,114 @@ func Prune(app common.AppController) error {
 
 func Remove(id string, force bool, app common.AppController) error {
 	return app.GetDocker().RemoveImage(id, force)
+}
+
+func DiveAction(app common.AppController, v *view.ResourceView) {
+	path, err := exec.LookPath("dive")
+	if err != nil {
+		app.AppendFlashError("dive command not found in PATH")
+		return
+	}
+
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	// Prepare to suspend the UI
+	app.StopAutoRefresh()
+	app.SetPaused(true)
+	defer func() {
+		app.SetPaused(false)
+		app.StartAutoRefresh()
+	}()
+
+	app.GetTviewApp().Suspend(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Dive panic: %v\n", r)
+			}
+		}()
+
+		// Clear any existing signal handlers in the app to avoid conflicts
+		signal.Reset(os.Interrupt, syscall.SIGTERM)
+		
+		// Setup local signal monitoring
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(c)
+
+		// IMPORTANT: d4s restores signal handling when we return from Suspend/This function?
+		// No, we must Restore them if necessary. But usually tcell re-inits on resume.
+		// However, it's safer to not leave d4s without signal handlers if this crashes.
+		// Since we cannot easily "restore previous", we rely on app re-init or default default.
+		// But actually, we don't know what the global handlers were.
+		// Usually a restart of the loop handles it.
+
+		fmt.Printf("Running dive on %s...\n", id)
+		
+		cmd := exec.Command(path, id)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("Error starting dive: %v\nPress Enter...", err)
+			fmt.Scanln()
+			return
+		}
+
+		// Handle signals
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-c:
+				// User interrupt
+				fmt.Println("\nStopping dive (Ctrl+C received)...") // Feedback
+				
+				// Try graceful termination first (SIGINT)
+				// Since we are in the same process group, dive already got the SIGINT from the TTY driver!
+				// We don't need to send it again usually.
+				// But if dive is ignoring it, we might need to Kill.
+				
+				// Give it a moment to exit gracefully?
+				timer := time.NewTimer(500 * time.Millisecond)
+				
+				select {
+				case <-done:
+					// Exited naturally
+					timer.Stop()
+				case <-timer.C:
+					// Didn't exit, FORCE KILL
+					fmt.Println("Dive did not exit, force killing...")
+					_ = cmd.Process.Kill()
+				case <-c:
+					// Second Ctrl+C? Kill immediately
+					fmt.Println("Force killing...")
+					_ = cmd.Process.Kill()
+				}
+			case <-done:
+				// Command finished
+			}
+		}()
+
+		// Wait for command
+		err = cmd.Wait()
+		close(done)
+
+		// Check errors
+		if err != nil {
+			// Ignore exit status 130 or kill signals as they are intented interruptions
+			s := err.Error()
+			if s != "signal: interrupt" && s != "exit status 130" && s != "signal: killed" && s != "signal: terminated" {
+				fmt.Printf("\nDive exited with error: %v\nPress Enter to continue...", err)
+				fmt.Scanln()
+			}
+		}
+	})
+
+	if app.GetScreen() != nil {
+		app.GetScreen().Sync()
+	}
 }
