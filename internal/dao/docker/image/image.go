@@ -45,7 +45,7 @@ type Image struct {
 func (i Image) GetID() string { return i.ID }
 func (i Image) GetCells() []string {
 	containersStr := fmt.Sprintf("%d", i.Containers)
-	if i.Containers == 0 {
+	if i.Containers <= 0 {
 		containersStr = ""
 	}
 	return []string{i.ID[:12], i.Tags, i.Size, containersStr, i.Created}
