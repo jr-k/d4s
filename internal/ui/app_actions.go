@@ -194,3 +194,12 @@ func (a *App) PerformCopy() {
 func (a *App) CopyToClipboard(text string) error {
 	return clipboard.WriteAll(text)
 }
+
+func (a *App) GetActionState(viewName string, id string) (string, tcell.Color, bool) {
+	if v, ok := a.Views[viewName]; ok {
+		if state, ok := v.ActionStates[id]; ok {
+			return state.Label, state.Color, true
+		}
+	}
+	return "", tcell.ColorDefault, false
+}

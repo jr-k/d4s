@@ -32,6 +32,7 @@ type AppController interface {
 
 	// Actions
 	PerformAction(action func(id string) error, actionName string, color tcell.Color)
+	GetActionState(viewName string, id string) (string, tcell.Color, bool)
 	InspectCurrentSelection()
 
 	// State

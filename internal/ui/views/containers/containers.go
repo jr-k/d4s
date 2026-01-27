@@ -23,6 +23,20 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		return nil, err
 	}
 
+	// Propagate Action State from Compose View
+	// If a compose project is restarting, mark its containers as restarting
+	for i, res := range data {
+		if c, ok := res.(dao.Container); ok {
+			if c.ProjectName != "" {
+				if state, _, active := app.GetActionState(styles.TitleCompose, c.ProjectName); active {
+					c.State = state
+					c.Status = strings.Title(state) + "..."
+					data[i] = c
+				}
+			}
+		}
+	}
+
 	scope := app.GetActiveScope()
 	if scope != nil {
 		if scope.Type == "compose" {

@@ -74,7 +74,7 @@ func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 	lower := strings.ToLower(c.State)
 
 	// Fallback to parsed status if State is generic
-	if strings.Contains(strings.ToLower(c.Status), "starting") {
+	if strings.Contains(strings.ToLower(c.Status), "starting") && !strings.Contains(strings.ToLower(c.Status), "restarting") {
 		return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
@@ -89,6 +89,10 @@ func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 		return styles.ColorStatusYellow, styles.ColorBlack
 	case "restarting":
 		return styles.ColorStatusOrange, styles.ColorBlack
+	case "stopping":
+		return styles.ColorStatusRed, styles.ColorBlack
+	case "starting":
+		return styles.ColorStatusBlue, styles.ColorBlack
 	case "exited", "dead":
 		return styles.ColorStatusGray, styles.ColorBlack
 	case "created":
