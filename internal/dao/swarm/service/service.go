@@ -177,6 +177,20 @@ func (m *Manager) Scale(id string, replicas uint64) error {
 	return err
 }
 
+func (m *Manager) UpdateImage(id string, image string) error {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	service.Spec.TaskTemplate.ContainerSpec.Image = image
+
+	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{
+		QueryRegistry: true,
+	})
+	return err
+}
+
 func (m *Manager) Remove(id string) error {
 	return m.cli.ServiceRemove(m.ctx, id)
 }

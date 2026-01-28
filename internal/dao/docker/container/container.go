@@ -59,6 +59,7 @@ type Container struct {
 	Mem         string
 	IP          string
 	Cmd         string
+	Networks    map[string]string
 }
 
 func (c Container) GetID() string { return c.ID }
@@ -245,12 +246,13 @@ func (m *Manager) List() ([]common.Resource, error) {
 		}
 
 		ip := ""
+		networks := make(map[string]string)
 		if c.NetworkSettings != nil {
-			for _, n := range c.NetworkSettings.Networks {
-				if n.IPAddress != "" {
+			for name, n := range c.NetworkSettings.Networks {
+				if ip == "" && n.IPAddress != "" {
 					ip = n.IPAddress
-					break
 				}
+				networks[name] = n.NetworkID
 			}
 		}
 
@@ -283,6 +285,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 			Mem:         memStr,
 			IP:          ip,
 			Cmd:         cmd,
+			Networks:    networks,
 		}
 	}
 	return res, nil

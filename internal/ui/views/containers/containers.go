@@ -76,6 +76,19 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 				}
 			}
 			return scopedData, nil
+		} else if scope.Type == "network" {
+			var scopedData []dao.Resource
+			for _, res := range data {
+				if c, ok := res.(dao.Container); ok {
+					for _, netID := range c.Networks {
+						if netID == scope.Value {
+							scopedData = append(scopedData, res)
+							break
+						}
+					}
+				}
+			}
+			return scopedData, nil
 		}
 	}
 	

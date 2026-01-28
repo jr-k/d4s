@@ -13,7 +13,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-var Headers = []string{"ID", "NAME", "DRIVER", "SCOPE", "CREATED", "INTERNAL", "SUBNET"}
+var Headers = []string{"ID", "NAME", "DRIVER", "SCOPE", "CONTAINERS", "CREATED", "INTERNAL", "SUBNET"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	scope := app.GetActiveScope()
@@ -56,6 +56,7 @@ func Inspect(app common.AppController, id string) {
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("c", "Containers"),
 		common.FormatSCHeader("a", "Add"),
 		common.FormatSCHeader("p", "Prune"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
@@ -69,6 +70,26 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	switch event.Rune() {
+	case 'c':
+		row, _ := v.Table.GetSelection()
+		if row < 1 || row >= v.Table.GetRowCount() {
+			return nil
+		}
+		dataIndex := row - 1
+		if dataIndex < 0 || dataIndex >= len(v.Data) {
+			return nil
+		}
+		if net, ok := v.Data[dataIndex].(dao.Network); ok {
+			scope := &common.Scope{
+				Type:       "network",
+				Value:      net.ID,
+				Label:      net.Name,
+				OriginView: styles.TitleNetworks,
+			}
+			app.SetActiveScope(scope)
+			app.SwitchTo(styles.TitleContainers)
+		}
+		return nil
 	case 'd':
 		app.InspectCurrentSelection()
 		return nil

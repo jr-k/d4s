@@ -290,6 +290,10 @@ func (d *DockerClient) ScaleService(id string, replicas uint64) error {
 	return d.Service.Scale(id, replicas)
 }
 
+func (d *DockerClient) UpdateServiceImage(id string, image string) error {
+	return d.Service.UpdateImage(id, image)
+}
+
 func (d *DockerClient) RemoveService(id string) error {
 	return d.Service.Remove(id)
 }

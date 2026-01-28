@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -24,18 +25,23 @@ func NewManager(cli *client.Client, ctx context.Context) *Manager {
 
 // Network Model
 type Network struct {
-	ID       string
-	Name     string
-	Driver   string
-	Scope    string
-	Created  string
-	Internal string
-	Subnet   string
+	ID         string
+	Name       string
+	Driver     string
+	Scope      string
+	Created    string
+	Internal   string
+	Subnet     string
+	Containers int
 }
 
 func (n Network) GetID() string { return n.ID }
 func (n Network) GetCells() []string {
-	return []string{n.ID[:12], n.Name, n.Driver, n.Scope, n.Created, n.Internal, n.Subnet}
+	containersStr := fmt.Sprintf("%d", n.Containers)
+	if n.Containers <= 0 {
+		containersStr = ""
+	}
+	return []string{n.ID[:12], n.Name, n.Driver, n.Scope, containersStr, n.Created, n.Internal, n.Subnet}
 }
 
 func (n Network) GetStatusColor() (tcell.Color, tcell.Color) {
@@ -52,6 +58,8 @@ func (n Network) GetColumnValue(column string) string {
 		return n.Driver
 	case "scope":
 		return n.Scope
+	case "containers":
+		return fmt.Sprintf("%d", n.Containers)
 	case "created":
 		return n.Created
 	case "internal":
@@ -94,13 +102,14 @@ func (m *Manager) List() ([]common.Resource, error) {
 		}
 
 		res = append(res, Network{
-			ID:       n.ID,
-			Name:     n.Name,
-			Driver:   n.Driver,
-			Scope:    n.Scope,
-			Created:  common.FormatTime(n.Created.Unix()),
-			Internal: internal,
-			Subnet:   strings.Join(subnets, ","),
+			ID:         n.ID,
+			Name:       n.Name,
+			Driver:     n.Driver,
+			Scope:      n.Scope,
+			Created:    common.FormatTime(n.Created.Unix()),
+			Internal:   internal,
+			Subnet:     strings.Join(subnets, ","),
+			Containers: len(n.Containers),
 		})
 	}
 	return res, nil

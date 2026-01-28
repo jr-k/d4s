@@ -51,6 +51,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 
 func GetShortcuts() []string {
 	return []string{
+		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("s", "Scale"),
@@ -73,6 +74,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	}
 	
 	switch event.Rune() {
+	case 'e':
+		EditAction(app, v)
+		return nil
 	case 's':
 		ScaleAction(app, v)
 		return nil
@@ -219,6 +223,43 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 					app.SetFlashError(fmt.Sprintf("%v", err))
 				} else {
 					app.SetFlashSuccess(fmt.Sprintf("service scaled to %d", replicas))
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
+func EditAction(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	currentImage := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		item := v.Data[row-1]
+		cells := item.GetCells()
+		if len(cells) > 2 {
+			currentImage = strings.TrimSpace(cells[2])
+		}
+	}
+
+	dialogs.ShowInput(app, "Edit Service", "Image:", currentImage, func(text string) {
+		if text == "" {
+			return
+		}
+
+		app.SetFlashPending(fmt.Sprintf("updating service %s...", id))
+
+		app.RunInBackground(func() {
+			err := app.GetDocker().UpdateServiceImage(id, text)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.SetFlashError(fmt.Sprintf("%v", err))
+				} else {
+					app.SetFlashSuccess("service updated")
 					app.RefreshCurrentView()
 				}
 			})
