@@ -27,6 +27,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{"", ""},
 		{"[orange::b]SWARM", ""},
 		{"[#5f87ff]:s[-]        Services", "[#5f87ff]:no[-]       Nodes"},
+		{"[#5f87ff]:x[-]        Secrets", ""},
 		{"", ""},
 		{"[orange::b]NAVIGATION", ""},
 		{"[#5f87ff]←/→[-], [#5f87ff]j/k[-]   Navigate", "[#5f87ff]enter[-]       Drill Down"},

@@ -22,6 +22,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/views/images"
 	"github.com/jr-k/d4s/internal/ui/views/networks"
 	"github.com/jr-k/d4s/internal/ui/views/nodes"
+	"github.com/jr-k/d4s/internal/ui/views/secrets"
 	"github.com/jr-k/d4s/internal/ui/views/services"
 	"github.com/jr-k/d4s/internal/ui/views/volumes"
 	"github.com/jr-k/d4s/internal/updater"
@@ -297,6 +298,18 @@ func (a *App) initUI() {
 		return aliases.InputHandler(vAliases, event)
 	}
 	a.Views[styles.TitleAliases] = vAliases
+
+	// Secrets
+	vSecrets := view.NewResourceView(a, styles.TitleSecrets)
+	vSecrets.ShortcutsFunc = secrets.GetShortcuts
+	vSecrets.FetchFunc = secrets.Fetch
+	vSecrets.InspectFunc = secrets.Inspect
+	vSecrets.RemoveFunc = secrets.Remove
+	vSecrets.Headers = secrets.Headers
+	vSecrets.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return secrets.InputHandler(vSecrets, event)
+	}
+	a.Views[styles.TitleSecrets] = vSecrets
 
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)

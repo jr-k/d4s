@@ -213,3 +213,29 @@ func (m *Manager) Logs(id string, since string, tail string, timestamps bool) (i
 	}
 	return m.cli.ServiceLogs(m.ctx, id, opts)
 }
+
+func (m *Manager) GetEnv(id string) ([]string, error) {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return []string{}, nil
+	}
+
+	return service.Spec.TaskTemplate.ContainerSpec.Env, nil
+}
+
+func (m *Manager) GetSecrets(id string) ([]*swarm.SecretReference, error) {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return []*swarm.SecretReference{}, nil
+	}
+
+	return service.Spec.TaskTemplate.ContainerSpec.Secrets, nil
+}

@@ -39,6 +39,8 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleCompose)
 	case "a", "al", "alias", "aliases":
 		switchToRoot(styles.TitleAliases)
+	case "x", "sec", "secret", "secrets":
+		switchToRoot(styles.TitleSecrets)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:

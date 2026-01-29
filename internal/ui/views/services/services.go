@@ -14,6 +14,91 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
+func resolveServiceSubject(v *view.ResourceView, id string) string {
+	name := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if s, ok := v.Data[index].(dao.Service); ok {
+				name = s.Name
+			}
+		}
+	}
+
+	subject := id
+	if len(id) > 12 {
+		subject = id[:12]
+	}
+	if name != "" {
+		return fmt.Sprintf("%s@%s", name, subject)
+	}
+	return subject
+}
+
+func Env(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	env, err := app.GetDocker().GetServiceEnv(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	var lines []string
+	for _, line := range env {
+		lines = append(lines, line)
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, "# No environment variables defined")
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Environment service", subject, strings.Join(lines, "\n"), "env"))
+}
+
+func Secrets(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	secrets, err := app.GetDocker().GetServiceSecrets(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	var lines []string
+	if len(secrets) == 0 {
+		lines = append(lines, "# No secrets attached to this service")
+	} else {
+		lines = append(lines, "# Secrets attached to this service")
+		lines = append(lines, "# (Secret values are not accessible for security reasons)")
+		lines = append(lines, "")
+		for _, s := range secrets {
+			secretID := s.SecretID
+			if len(secretID) > 12 {
+				secretID = secretID[:12]
+			}
+			line := fmt.Sprintf("- %s (ID: %s)", s.SecretName, secretID)
+			if s.File != nil {
+				line += fmt.Sprintf(" -> %s", s.File.Name)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Secrets service", subject, strings.Join(lines, "\n"), "text"))
+}
+
 var Headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS", "CREATED", "UPDATED"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
@@ -51,11 +136,13 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 
 func GetShortcuts() []string {
 	return []string{
-		common.FormatSCHeader("e", "Edit"),
+		common.FormatSCHeader("e", "Env"),
+		common.FormatSCHeader("t", "Secrets"),
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("s", "Scale"),
 		common.FormatSCHeader("z", "No Replica"),
+		common.FormatSCHeader("shift-e", "Edit"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
@@ -75,6 +162,12 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	
 	switch event.Rune() {
 	case 'e':
+		Env(app, v)
+		return nil
+	case 't':
+		Secrets(app, v)
+		return nil
+	case 'E':
 		EditAction(app, v)
 		return nil
 	case 's':

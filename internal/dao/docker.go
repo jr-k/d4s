@@ -21,6 +21,7 @@ import (
 	"github.com/jr-k/d4s/internal/dao/docker/container"
 	"github.com/jr-k/d4s/internal/dao/docker/image"
 	"github.com/jr-k/d4s/internal/dao/docker/network"
+	"github.com/jr-k/d4s/internal/dao/docker/secret"
 	"github.com/jr-k/d4s/internal/dao/docker/volume"
 	"github.com/jr-k/d4s/internal/dao/swarm/node"
 	"github.com/jr-k/d4s/internal/dao/swarm/service"
@@ -35,6 +36,7 @@ type Volume = volume.Volume
 type Network = network.Network
 type Service = service.Service
 type Node = node.Node
+type Secret = secret.Secret
 type ComposeProject = compose.ComposeProject
 
 type DockerClient struct {
@@ -49,6 +51,7 @@ type DockerClient struct {
 	Network   *network.Manager
 	Service   *service.Manager
 	Node      *node.Manager
+	Secret    *secret.Manager
 	Compose   *compose.Manager
 }
 
@@ -77,6 +80,7 @@ func NewDockerClient(contextName string) (*DockerClient, error) {
 		Network:     network.NewManager(cli, ctx),
 		Service:     service.NewManager(cli, ctx),
 		Node:        node.NewManager(cli, ctx),
+		Secret:      secret.NewManager(cli, ctx),
 		Compose:     compose.NewManager(cli, ctx),
 	}, nil
 }
@@ -229,6 +233,10 @@ func (d *DockerClient) ListCompose() ([]common.Resource, error) {
 	return d.Compose.List()
 }
 
+func (d *DockerClient) ListSecrets() ([]common.Resource, error) {
+	return d.Secret.List()
+}
+
 // Actions wrappers
 func (d *DockerClient) StopContainer(id string) error {
 	return d.Container.Stop(id)
@@ -302,6 +310,10 @@ func (d *DockerClient) RemoveNode(id string, force bool) error {
 	return d.Node.Remove(id, force)
 }
 
+func (d *DockerClient) RemoveSecret(id string) error {
+	return d.Secret.Remove(id)
+}
+
 func (d *DockerClient) StopComposeProject(projectName string) error {
 	return d.Compose.Stop(projectName)
 }
@@ -345,6 +357,14 @@ func (d *DockerClient) GetContainerLogs(id string, since string, tail string, ti
 
 func (d *DockerClient) GetServiceLogs(id string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
 	return d.Service.Logs(id, since, tail, timestamps)
+}
+
+func (d *DockerClient) GetServiceEnv(id string) ([]string, error) {
+	return d.Service.GetEnv(id)
+}
+
+func (d *DockerClient) GetServiceSecrets(id string) ([]*swarm.SecretReference, error) {
+	return d.Service.GetSecrets(id)
 }
 
 func (d *DockerClient) GetComposeLogs(projectName string, since string, tail string, timestamps bool) (io.ReadCloser, error) {

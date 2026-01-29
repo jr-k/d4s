@@ -72,4 +72,5 @@ const (
 	TitleNodes      = "Nodes"
 	TitleCompose    = "Compose"
 	TitleAliases    = "Aliases"
+	TitleSecrets    = "Secrets"
 )
