@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/common"
@@ -102,17 +103,23 @@ func Secrets(app common.AppController, v *view.ResourceView) {
 var Headers = []string{"ID", "NAME", "IMAGE", "MODE", "REPLICAS", "PORTS", "CREATED", "UPDATED"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
+	scope := app.GetActiveScope()
+
+	// Filter by Secret Scope
+	if scope != nil && scope.Type == "secret" {
+		return app.GetDocker().ListServicesForSecret(scope.Value)
+	}
+
 	services, err := app.GetDocker().ListServices()
 	if err != nil {
 		return nil, err
 	}
 
 	// Filter by Node Scope
-	scope := app.GetActiveScope()
 	if scope != nil && scope.Type == "node" {
 		nodeID := scope.Value
 		var filtered []dao.Resource
-		
+
 		// We need to check which services have tasks on this node
 		// This requires an extra call to list tasks for this node
 		tasks, err := app.GetDocker().ListTasksForNode(nodeID)
@@ -121,7 +128,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 			for _, task := range tasks {
 				serviceIDs[task.ServiceID] = true
 			}
-			
+
 			for _, s := range services {
 				if serviceIDs[s.GetID()] {
 					filtered = append(filtered, s)
@@ -130,19 +137,20 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 			return filtered, nil
 		}
 	}
-	
+
 	return services, nil
 }
 
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("e", "Env"),
-		common.FormatSCHeader("t", "Secrets"),
+		common.FormatSCHeader("x", "Secrets"),
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("s", "Scale"),
 		common.FormatSCHeader("z", "No Replica"),
-		common.FormatSCHeader("shift-e", "Edit"),
+		common.FormatSCHeader("shift-x", "Attach Secrets"),
+		common.FormatSCHeader("shift-i", "Edit Image"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
@@ -164,10 +172,13 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	case 'e':
 		Env(app, v)
 		return nil
-	case 't':
+	case 'x':
 		Secrets(app, v)
 		return nil
-	case 'E':
+	case 'X':
+		SecretsPicker(app, v)
+		return nil
+	case 'I':
 		EditAction(app, v)
 		return nil
 	case 's':
@@ -323,6 +334,90 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 	})
 }
 
+func SecretsPicker(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	// Get all secrets
+	allSecrets, err := app.GetDocker().ListSecrets()
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	if len(allSecrets) == 0 {
+		app.SetFlashError("no secrets available")
+		return
+	}
+
+	// Get current service secrets
+	currentSecrets, err := app.GetDocker().GetServiceSecrets(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	// Build map of attached secret IDs
+	attachedIDs := make(map[string]bool)
+	for _, s := range currentSecrets {
+		attachedIDs[s.SecretID] = true
+	}
+
+	// Build picker items
+	var items []dialogs.MultiPickerItem
+	for _, sec := range allSecrets {
+		s := sec.(dao.Secret)
+		items = append(items, dialogs.MultiPickerItem{
+			ID:       s.ID,
+			Label:    s.Name,
+			Selected: attachedIDs[s.ID],
+		})
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	dialogs.ShowMultiPicker(app, fmt.Sprintf("Secrets for %s", subject), items, func(selected []string) {
+		// Build new secret references
+		selectedMap := make(map[string]bool)
+		for _, id := range selected {
+			selectedMap[id] = true
+		}
+
+		// Build secret refs from selected IDs
+		var newSecretRefs []*swarm.SecretReference
+		for _, sec := range allSecrets {
+			s := sec.(dao.Secret)
+			if selectedMap[s.ID] {
+				newSecretRefs = append(newSecretRefs, &swarm.SecretReference{
+					SecretID:   s.ID,
+					SecretName: s.Name,
+					File: &swarm.SecretReferenceFileTarget{
+						Name: s.Name,
+						UID:  "0",
+						GID:  "0",
+						Mode: 0444,
+					},
+				})
+			}
+		}
+
+		app.SetFlashPending("updating service secrets...")
+		app.RunInBackground(func() {
+			err := app.GetDocker().SetServiceSecrets(id, newSecretRefs)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.SetFlashError(fmt.Sprintf("%v", err))
+				} else {
+					app.SetFlashSuccess("service secrets updated")
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
 func EditAction(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
 	if err != nil {
@@ -339,15 +434,20 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 		}
 	}
 
-	dialogs.ShowInput(app, "Edit Service", "Image:", currentImage, func(text string) {
-		if text == "" {
+	fields := []dialogs.FormField{
+		{Name: "image", Label: "Image", Type: dialogs.FieldTypeInput, Default: currentImage},
+	}
+
+	dialogs.ShowForm(app, "Edit Service Image", fields, func(result dialogs.FormResult) {
+		image := result["image"]
+		if image == "" {
 			return
 		}
 
 		app.SetFlashPending(fmt.Sprintf("updating service %s...", id))
 
 		app.RunInBackground(func() {
-			err := app.GetDocker().UpdateServiceImage(id, text)
+			err := app.GetDocker().UpdateServiceImage(id, image)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
 					app.SetFlashError(fmt.Sprintf("%v", err))

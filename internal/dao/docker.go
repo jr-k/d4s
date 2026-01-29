@@ -314,6 +314,10 @@ func (d *DockerClient) RemoveSecret(id string) error {
 	return d.Secret.Remove(id)
 }
 
+func (d *DockerClient) CreateSecret(name string, data []byte) error {
+	return d.Secret.Create(name, data)
+}
+
 func (d *DockerClient) StopComposeProject(projectName string) error {
 	return d.Compose.Stop(projectName)
 }
@@ -365,6 +369,34 @@ func (d *DockerClient) GetServiceEnv(id string) ([]string, error) {
 
 func (d *DockerClient) GetServiceSecrets(id string) ([]*swarm.SecretReference, error) {
 	return d.Service.GetSecrets(id)
+}
+
+func (d *DockerClient) SetServiceSecrets(id string, secretRefs []*swarm.SecretReference) error {
+	return d.Service.SetSecrets(id, secretRefs)
+}
+
+
+func (d *DockerClient) ListServicesForSecret(secretID string) ([]common.Resource, error) {
+	services, err := d.Service.List()
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []common.Resource
+	for _, svc := range services {
+		// Check if this service uses the secret
+		secrets, err := d.Service.GetSecrets(svc.GetID())
+		if err == nil {
+			for _, s := range secrets {
+				if s.SecretID == secretID {
+					filtered = append(filtered, svc)
+					break
+				}
+			}
+		}
+	}
+
+	return filtered, nil
 }
 
 func (d *DockerClient) GetComposeLogs(projectName string, since string, tail string, timestamps bool) (io.ReadCloser, error) {

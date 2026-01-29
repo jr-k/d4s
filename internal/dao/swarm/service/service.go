@@ -239,3 +239,19 @@ func (m *Manager) GetSecrets(id string) ([]*swarm.SecretReference, error) {
 
 	return service.Spec.TaskTemplate.ContainerSpec.Secrets, nil
 }
+
+func (m *Manager) SetSecrets(id string, secretRefs []*swarm.SecretReference) error {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return fmt.Errorf("service has no container spec")
+	}
+
+	service.Spec.TaskTemplate.ContainerSpec.Secrets = secretRefs
+
+	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
+	return err
+}

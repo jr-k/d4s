@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
@@ -12,7 +13,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-var Headers = []string{"ID", "NAME", "CREATED", "UPDATED", "LABELS"}
+var Headers = []string{"ID", "NAME", "SERVICES", "CREATED", "UPDATED", "LABELS"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	return app.GetDocker().ListSecrets()
@@ -20,7 +21,9 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 
 func GetShortcuts() []string {
 	return []string{
+		common.FormatSCHeader("s", "Services"),
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("a", "Add"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
@@ -34,12 +37,46 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Rune() {
+	case 's':
+		ViewServices(app, v)
+		return nil
 	case 'd':
 		app.InspectCurrentSelection()
+		return nil
+	case 'a':
+		Create(app)
 		return nil
 	}
 
 	return event
+}
+
+func ViewServices(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	// Get secret name for label
+	name := id
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if s, ok := v.Data[index].(dao.Secret); ok {
+				name = s.Name
+			}
+		}
+	}
+
+	app.SetActiveScope(&common.Scope{
+		Type:       "secret",
+		Value:      id,
+		Label:      name,
+		OriginView: styles.TitleSecrets,
+	})
+
+	app.SwitchTo(styles.TitleServices)
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
@@ -63,6 +100,40 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 
 func Remove(id string, force bool, app common.AppController) error {
 	return app.GetDocker().RemoveSecret(id)
+}
+
+func Create(app common.AppController) {
+	fields := []dialogs.FormField{
+		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput},
+		{Name: "value", Label: "Value", Type: dialogs.FieldTypeInput},
+	}
+
+	dialogs.ShowFormWithDescription(app, "Create Secret", "Enter secret name and value", fields, func(result dialogs.FormResult) {
+		name := result["name"]
+		value := result["value"]
+
+		if name == "" || value == "" {
+			app.SetFlashError("name and value are required")
+			return
+		}
+
+		app.SetFlashPending(fmt.Sprintf("creating secret %s...", name))
+		app.RunInBackground(func() {
+			err := app.GetDocker().CreateSecret(name, []byte(value))
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.SetFlashError(fmt.Sprintf("%v", err))
+				} else {
+					app.SetFlashSuccess(fmt.Sprintf("secret %s created", name))
+					app.ScheduleViewHighlight(styles.TitleSecrets, func(res dao.Resource) bool {
+						sec, ok := res.(dao.Secret)
+						return ok && sec.Name == name
+					}, styles.ColorStatusGreen, styles.ColorBlack, 2*time.Second)
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
 }
 
 func Inspect(app common.AppController, id string) {

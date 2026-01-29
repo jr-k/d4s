@@ -106,8 +106,8 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("v", "Volumes"),
 		common.FormatSCHeader("n", "Networks"),
 		common.FormatSCHeader("r", "(Re)Start"),
-		common.FormatSCHeader("x", "Stop"),
 		common.FormatSCHeader("p", "Prune"),
+		common.FormatSCHeader("ctrl-k", "Stop"),
 	}
 }
 
@@ -117,8 +117,11 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() == tcell.KeyCtrlD {
 		DeleteAction(app, v)
 		return nil
+	}	
+	if event.Key() == tcell.KeyCtrlK {
+		StopAction(app, v)
+		return nil
 	}
-	
 	switch event.Rune() {
 	case 'e':
 		Env(app, v)
@@ -150,9 +153,6 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'r':
 		RestartOrStart(app, v)
-		return nil
-	case 'x':
-		StopAction(app, v)
 		return nil
 	case 'p':
 		PruneAction(app)

@@ -56,12 +56,16 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
-		common.FormatSCHeader("x", "Stop"),
+		common.FormatSCHeader("ctrl-k", "Stop"),
 	}
 }
 
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
+	if event.Key() == tcell.KeyCtrlK {
+		StopAction(app, v)
+		return nil
+	}
 	switch event.Rune() {
 	case 'l':
 		Logs(app, v)
@@ -74,9 +78,6 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'r':
 		RestartAction(app, v)
-		return nil
-	case 'x':
-		StopAction(app, v)
 		return nil
 	}
 	
