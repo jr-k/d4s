@@ -234,10 +234,16 @@ func Shell(app common.AppController, id string) {
 
 		// Create a temporary container that mounts the volume
 		// We use sh as the shell
-		cmd := exec.Command("docker", "run", "--rm", "-it", "-v", id+":/data", "-w", "/data", "alpine", "sh")
+		containerName := fmt.Sprintf("d4s-vol-shell-%d", time.Now().UnixNano())
+		cmd := exec.Command("docker", "run", "--rm", "--name", containerName, "-it", "-v", id+":/data", "-w", "/data", "alpine", "sh")
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+
+		// Ensure cleanup
+		defer func() {
+			exec.Command("docker", "rm", "-f", containerName).Run()
+		}()
 
 		if err := cmd.Run(); err != nil {
 			fmt.Printf("\nError executing shell: %v\n", err)
