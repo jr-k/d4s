@@ -255,3 +255,24 @@ func (m *Manager) SetSecrets(id string, secretRefs []*swarm.SecretReference) err
 	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
 	return err
 }
+
+func (m *Manager) GetNetworks(id string) ([]swarm.NetworkAttachmentConfig, error) {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return service.Spec.TaskTemplate.Networks, nil
+}
+
+func (m *Manager) SetNetworks(id string, networks []swarm.NetworkAttachmentConfig) error {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	service.Spec.TaskTemplate.Networks = networks
+
+	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
+	return err
+}

@@ -148,3 +148,11 @@ func (m *Manager) Prune() error {
 	_, err := m.cli.NetworksPrune(m.ctx, filters.NewArgs())
 	return err
 }
+
+func (m *Manager) Connect(networkID, containerID string) error {
+	return m.cli.NetworkConnect(m.ctx, networkID, containerID, nil)
+}
+
+func (m *Manager) Disconnect(networkID, containerID string) error {
+	return m.cli.NetworkDisconnect(m.ctx, networkID, containerID, true)
+}

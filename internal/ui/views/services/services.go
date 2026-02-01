@@ -150,6 +150,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("s", "Scale"),
 		common.FormatSCHeader("z", "No Replica"),
 		common.FormatSCHeader("shift-x", "Attach Secrets"),
+		common.FormatSCHeader("shift-n", "Attach Networks"),
 		common.FormatSCHeader("shift-i", "Edit Image"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
@@ -177,6 +178,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'X':
 		SecretsPicker(app, v)
+		return nil
+	case 'N':
+		NetworksPicker(app, v)
 		return nil
 	case 'I':
 		EditAction(app, v)
@@ -411,6 +415,78 @@ func SecretsPicker(app common.AppController, v *view.ResourceView) {
 					app.SetFlashError(fmt.Sprintf("%v", err))
 				} else {
 					app.SetFlashSuccess("service secrets updated")
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
+func NetworksPicker(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	// Get all networks
+	allNetworks, err := app.GetDocker().ListNetworks()
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	if len(allNetworks) == 0 {
+		app.SetFlashError("no networks available")
+		return
+	}
+
+	// Get current service networks
+	currentNetworks, err := app.GetDocker().GetServiceNetworks(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	// Build map of attached network IDs
+	attachedIDs := make(map[string]bool)
+	for _, n := range currentNetworks {
+		attachedIDs[n.Target] = true
+	}
+
+	// Build picker items
+	var items []dialogs.MultiPickerItem
+	for _, res := range allNetworks {
+		if n, ok := res.(dao.Network); ok {
+			if n.Scope != "swarm" {
+				continue
+			}
+			items = append(items, dialogs.MultiPickerItem{
+				ID:       n.ID,
+				Label:    n.Name,
+				Selected: attachedIDs[n.ID],
+			})
+		}
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	dialogs.ShowMultiPicker(app, fmt.Sprintf("Networks for %s", subject), items, func(selected []string) {
+		// Build new network configs
+		var newNetworks []swarm.NetworkAttachmentConfig
+		for _, netID := range selected {
+			newNetworks = append(newNetworks, swarm.NetworkAttachmentConfig{
+				Target: netID,
+			})
+		}
+
+		app.SetFlashPending("updating service networks...")
+		app.RunInBackground(func() {
+			err := app.GetDocker().SetServiceNetworks(id, newNetworks)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.SetFlashError(fmt.Sprintf("%v", err))
+				} else {
+					app.SetFlashSuccess("service networks updated")
 					app.RefreshCurrentView()
 				}
 			})

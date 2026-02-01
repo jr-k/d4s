@@ -290,6 +290,14 @@ func (d *DockerClient) RemoveNetwork(id string) error {
 	return d.Network.Remove(id)
 }
 
+func (d *DockerClient) ConnectNetwork(networkID, containerID string) error {
+	return d.Network.Connect(networkID, containerID)
+}
+
+func (d *DockerClient) DisconnectNetwork(networkID, containerID string) error {
+	return d.Network.Disconnect(networkID, containerID)
+}
+
 func (d *DockerClient) PruneNetworks() error {
 	return d.Network.Prune()
 }
@@ -373,6 +381,14 @@ func (d *DockerClient) GetServiceSecrets(id string) ([]*swarm.SecretReference, e
 
 func (d *DockerClient) SetServiceSecrets(id string, secretRefs []*swarm.SecretReference) error {
 	return d.Service.SetSecrets(id, secretRefs)
+}
+
+func (d *DockerClient) GetServiceNetworks(id string) ([]swarm.NetworkAttachmentConfig, error) {
+	return d.Service.GetNetworks(id)
+}
+
+func (d *DockerClient) SetServiceNetworks(id string, networks []swarm.NetworkAttachmentConfig) error {
+	return d.Service.SetNetworks(id, networks)
 }
 
 

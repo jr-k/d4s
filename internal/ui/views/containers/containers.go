@@ -105,6 +105,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("m", "Monitor"),
 		common.FormatSCHeader("v", "Volumes"),
 		common.FormatSCHeader("n", "Networks"),
+		common.FormatSCHeader("shift-n", "Attach Network"),
 		common.FormatSCHeader("r", "(Re)Start"),
 		common.FormatSCHeader("p", "Prune"),
 		common.FormatSCHeader("ctrl-k", "Stop"),
@@ -137,6 +138,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'n':
 		Networks(app, v)
+		return nil
+	case 'N':
+		NetworksPicker(app, v)
 		return nil
 	case 'l':
 		Logs(app, v)
@@ -447,4 +451,102 @@ func resolveContainerSubject(v *view.ResourceView, id string) string {
 		return fmt.Sprintf("%s@%s", name, subject)
 	}
 	return subject
+}
+
+func NetworksPicker(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	// Get all networks
+	allNetworks, err := app.GetDocker().ListNetworks()
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	// Get current container networks
+	currentNetworks, err := app.GetDocker().ListNetworksForContainer(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	attachedIDs := make(map[string]bool)
+	for _, res := range currentNetworks {
+		if n, ok := res.(dao.Network); ok {
+			attachedIDs[n.ID] = true
+		}
+	}
+
+	var items []dialogs.MultiPickerItem
+	for _, res := range allNetworks {
+		if n, ok := res.(dao.Network); ok {
+			if n.Scope == "swarm" {
+				continue
+			}
+			items = append(items, dialogs.MultiPickerItem{
+				ID:       n.ID,
+				Label:    n.Name,
+				Selected: attachedIDs[n.ID],
+			})
+		}
+	}
+
+	subject := resolveContainerSubject(v, id)
+
+	dialogs.ShowMultiPicker(app, fmt.Sprintf("Networks for %s", subject), items, func(selected []string) {
+		selectedMap := make(map[string]bool)
+		for _, sid := range selected {
+			selectedMap[sid] = true
+		}
+
+		var toConnect []string
+		var toDisconnect []string
+
+		// Check for new connections
+		for _, sid := range selected {
+			if !attachedIDs[sid] {
+				toConnect = append(toConnect, sid)
+			}
+		}
+
+		// Check for disconnections
+		for attachedID := range attachedIDs {
+			if !selectedMap[attachedID] {
+				toDisconnect = append(toDisconnect, attachedID)
+			}
+		}
+
+		if len(toConnect) == 0 && len(toDisconnect) == 0 {
+			return
+		}
+
+		app.SetFlashPending("updating networks...")
+		app.RunInBackground(func() {
+			var errs []string
+			
+			for _, netID := range toConnect {
+				if err := app.GetDocker().ConnectNetwork(netID, id); err != nil {
+					errs = append(errs, fmt.Sprintf("connect %s: %v", netID, err))
+				}
+			}
+			
+			for _, netID := range toDisconnect {
+				if err := app.GetDocker().DisconnectNetwork(netID, id); err != nil {
+					errs = append(errs, fmt.Sprintf("disconnect %s: %v", netID, err))
+				}
+			}
+
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if len(errs) > 0 {
+					app.SetFlashError(strings.Join(errs, "; "))
+				} else {
+					app.SetFlashSuccess("networks updated")
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
 }
