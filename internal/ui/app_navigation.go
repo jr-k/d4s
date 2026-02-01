@@ -84,7 +84,14 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 		}
 
 		a.Pages.SwitchToPage(viewName)
-		a.ActiveFilter = "" // Reset filter on view switch
+		
+		if reset {
+			a.ActiveFilter = ""
+			// Clear the view's filter as well since we are resetting
+			v.SetFilter("")
+		} else {
+			a.ActiveFilter = v.Filter
+		}
 
 		// Update Command Line (Reset)
 		a.CmdLine.Reset()
