@@ -99,6 +99,7 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("s", "Shell"),
+		common.FormatSCHeader("i", "Image"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Env"),
 		common.FormatSCHeader("t", "Stats"),
@@ -144,6 +145,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'l':
 		Logs(app, v)
+		return nil
+	case 'i':
+		InspectImage(app, v)
 		return nil
 	case 's':
 		// Shell
@@ -391,6 +395,39 @@ func Shell(app common.AppController, id string) {
 	if app.GetScreen() != nil {
 		app.GetScreen().Sync()
 	}
+}
+
+func InspectImage(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil { return }
+
+	var imageID string
+	var imageName string
+	
+	// Find container to get ImageID
+	for _, res := range v.Data {
+		if res.GetID() == id {
+			if c, ok := res.(dao.Container); ok {
+				imageID = c.ImageID
+				imageName = c.Image
+			}
+			break
+		}
+	}
+	
+	if imageID == "" {
+		app.SetFlashError("Could not find image for container")
+		return
+	}
+
+	app.SetActiveScope(&common.Scope{
+		Type:       "image",
+		Value:      imageID,
+		Label:      fmt.Sprintf("Image: %s", imageName),
+		OriginView: styles.TitleContainers,
+	})
+
+	app.SwitchTo(styles.TitleImages)
 }
 
 func RestartOrStart(app common.AppController, v *view.ResourceView) {

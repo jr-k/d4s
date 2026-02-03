@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,7 +21,27 @@ import (
 var Headers = []string{"ID", "TAGS", "SIZE", "CONTAINERS", "CREATED"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
-	return app.GetDocker().ListImages()
+	images, err := app.GetDocker().ListImages()
+	if err != nil {
+		return nil, err
+	}
+
+	scope := app.GetActiveScope()
+	if scope != nil && scope.Type == "image" {
+		var filtered []dao.Resource
+		for _, r := range images {
+			if img, ok := r.(dao.Image); ok {
+				// Match by ID (full or prefix)
+				// Image IDs often start with sha256:, handle that too if needed, but usually dao handles it.
+				// dao.Image usually has raw ID. scope.Value from container might be short or long.
+				if img.ID == scope.Value || strings.HasPrefix(img.ID, scope.Value) {
+					filtered = append(filtered, r)
+				}
+			}
+		}
+		return filtered, nil
+	}
+	return images, nil
 }
 
 func GetShortcuts() []string {
