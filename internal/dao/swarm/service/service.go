@@ -7,6 +7,7 @@ import (
 
 	dt "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/gdamore/tcell/v2"
@@ -263,6 +264,13 @@ func (m *Manager) GetNetworks(id string) ([]swarm.NetworkAttachmentConfig, error
 	}
 
 	return service.Spec.TaskTemplate.Networks, nil
+}
+
+func (m *Manager) ListTasks(serviceID string) ([]swarm.Task, error) {
+	filter := filters.NewArgs()
+	filter.Add("service", serviceID)
+
+	return m.cli.TaskList(m.ctx, dt.TaskListOptions{Filters: filter})
 }
 
 func (m *Manager) SetNetworks(id string, networks []swarm.NetworkAttachmentConfig) error {

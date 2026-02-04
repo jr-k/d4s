@@ -146,6 +146,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("e", "Env"),
 		common.FormatSCHeader("x", "Secrets"),
 		common.FormatSCHeader("l", "Logs"),
+		common.FormatSCHeader("p", "Ps"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("s", "Scale"),
 		common.FormatSCHeader("z", "No Replica"),
@@ -191,6 +192,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	case 'l':
 		Logs(app, v)
 		return nil
+	case 'p':
+		Ps(app, v)
+		return nil
 	case 'z':
 		ScaleZero(app, v)
 		return nil
@@ -234,6 +238,69 @@ func Logs(app common.AppController, v *view.ResourceView) {
 	
 	// Open Logs view
 	app.OpenInspector(inspect.NewLogInspector(id, id, "service"))
+}
+
+func Ps(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	tasks, err := app.GetDocker().ListTasksForService(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	// Build node name map
+	nodeNames := make(map[string]string)
+	nodes, err := app.GetDocker().ListNodes()
+	if err == nil {
+		for _, n := range nodes {
+			if node, ok := n.(dao.Node); ok {
+				nodeNames[node.ID] = node.Hostname
+			}
+		}
+	}
+
+	var lines []string
+	if len(tasks) == 0 {
+		lines = append(lines, "# No tasks for this service")
+	} else {
+		// Header
+		lines = append(lines, fmt.Sprintf("%-14s %-20s %-20s %-15s %-15s %s", "ID", "NAME", "NODE", "DESIRED STATE", "CURRENT STATE", "ERROR"))
+		lines = append(lines, strings.Repeat("-", 120))
+
+		for _, t := range tasks {
+			taskID := t.ID
+			if len(taskID) > 12 {
+				taskID = taskID[:12]
+			}
+
+			taskName := t.Spec.ContainerSpec.Image
+			if t.Slot > 0 {
+				// For replicated services, use service name + slot
+				taskName = fmt.Sprintf("%s.%d", t.ServiceID[:12], t.Slot)
+			}
+
+			nodeName := t.NodeID
+			if name, ok := nodeNames[t.NodeID]; ok {
+				nodeName = name
+			} else if len(nodeName) > 12 {
+				nodeName = nodeName[:12]
+			}
+
+			desiredState := string(t.DesiredState)
+			currentState := string(t.Status.State)
+			errorMsg := t.Status.Err
+
+			lines = append(lines, fmt.Sprintf("%-14s %-20s %-20s %-15s %-15s %s", taskID, taskName, nodeName, desiredState, currentState, errorMsg))
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Service ps", subject, strings.Join(lines, "\n"), "text"))
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {

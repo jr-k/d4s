@@ -423,6 +423,10 @@ func (d *DockerClient) ListTasksForNode(nodeID string) ([]swarm.Task, error) {
 	return d.Node.ListTasks(nodeID)
 }
 
+func (d *DockerClient) ListTasksForService(serviceID string) ([]swarm.Task, error) {
+	return d.Service.ListTasks(serviceID)
+}
+
 func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, error) {
 	// Inspect container to get mounts
 	json, err := d.Cli.ContainerInspect(d.Ctx, id)
