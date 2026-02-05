@@ -134,7 +134,7 @@ sudo tee -a /etc/pacman.conf <<EOF
 
 [d4s]
 SigLevel = Optional TrustAll
-Server = https://pacman.d4scli.io
+Server = https://pacman.d4scli.io/$arch
 EOF
 sudo pacman -Sy d4s
 ```
