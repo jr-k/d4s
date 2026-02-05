@@ -7,9 +7,6 @@
 
 D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local Docker ecosystem. Stop wrestling with verbose CLI commands and start managing your containers like a pro.
 
-> Manage your Docker Swarm, Compose stacks, and Containers with a fancy, fast, and keyboard-centric Terminal User Interface.
-
-
 <a target="_blank" href="https://github.com/jr-k/d4s/commit/HEAD"><img src="https://img.shields.io/github/last-commit/jr-k/d4s?color=green" /></a>
 <a target="_blank" href="https://github.com/jr-k/d4s/stargazers"><img src="https://img.shields.io/github/stars/jr-k/d4s?style=flat&color=yellow" /></a>
 <a target="_blank" href="https://github.com/jr-k/d4s/pkgs/container/d4s"><img src="https://img.shields.io/badge/ghcr.io-d4s-orange?logo=github&color=orange" /></a>
