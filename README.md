@@ -38,6 +38,59 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 
 ## Installation
 
+> ### Generic
+
+<details>
+<summary><b>Binary Releases</b></summary>
+
+> Automated
+```bash
+curl -fsSL https://d4scli.io/install.sh | sh -s -- ~/.local/bin
+```
+*The script installs downloaded binary to `$HOME/.local/bin` directory by default, but it can be changed by setting DIR environment variable.*
+
+> Manual
+
+Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually.
+</details>
+
+<details>
+<summary><b>Docker</b></summary>
+
+```bash
+docker run --rm --pull always -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest
+```
+
+**You might want to create an alias for quicker usage. For example:**
+
+```bash
+echo "alias d4s='docker run --rm --pull always -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest'" >> ~/.zshrc
+```
+*After running this, either restart your terminal or run `source ~/.zshrc` (or `source ~/.bashrc` for Bash) to enable the alias.*
+</details>
+
+<details>
+<summary><b>From Source</b></summary>
+
+>Requirement: Go 1.21+
+```bash
+git clone https://github.com/jr-k/d4s.git
+cd d4s
+go build -o d4s cmd/d4s/main.go
+sudo mv d4s ~/.local/bin/
+```
+
+```bash
+# Make the binary accessible then run it
+mv d4s ~/.local/bin/
+d4s
+
+# Quickly run from source
+go run cmd/d4s/main.go
+```
+</details>
+
+
 > ### macOS
 
 <details>
@@ -152,57 +205,6 @@ scoop install d4s
 ```
 </details>
 
-> ### Others
-
-<details>
-<summary><b>Binary Releases</b></summary>
-
-> Automated
-```bash
-curl -fsSL https://d4scli.io/install.sh | sh -s -- ~/.local/bin
-```
-*The script installs downloaded binary to `$HOME/.local/bin` directory by default, but it can be changed by setting DIR environment variable.*
-
-> Manual
-
-Grab a release from the [releases page](https://github.com/jr-k/d4s/releases) and install it manually.
-</details>
-
-<details>
-<summary><b>Docker</b></summary>
-
-```bash
-docker run --rm --pull always -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest
-```
-
-**You might want to create an alias for quicker usage. For example:**
-
-```bash
-echo "alias d4s='docker run --rm --pull always -it -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/jr-k/d4s:latest'" >> ~/.zshrc
-```
-*After running this, either restart your terminal or run `source ~/.zshrc` (or `source ~/.bashrc` for Bash) to enable the alias.*
-</details>
-
-<details>
-<summary><b>From Source</b></summary>
-
->Requirement: Go 1.21+
-```bash
-git clone https://github.com/jr-k/d4s.git
-cd d4s
-go build -o d4s cmd/d4s/main.go
-sudo mv d4s ~/.local/bin/
-```
-
-```bash
-# Make the binary accessible then run it
-mv d4s ~/.local/bin/
-d4s
-
-# Quickly run from source
-go run cmd/d4s/main.go
-```
-</details>
 
 ## Usage
 ```bash
