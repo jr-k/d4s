@@ -251,7 +251,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
         run: |
+          # Add XBPS checksums to checksums.txt
+          cd ${{ runner.temp }}/xbps-packages/
+          sha256sum *.xbps >> ${{ github.workspace }}/dist/checksums.txt
+          cd ${{ github.workspace }}
+          
+          # Upload XBPS packages
           gh release upload "${{ github.ref_name }}" ${{ runner.temp }}/xbps-packages/*.xbps --repo "${{ github.repository }}"
+
+      - name: Upload Gentoo ebuild to release
+        env:
+          GH_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          EBUILD_FILE="${{ runner.temp }}/gentoo-overlay/app-misc/d4s/d4s-${VERSION}.ebuild"
+          
+          # Add ebuild checksum
+          sha256sum "${EBUILD_FILE}" | sed "s|${{ runner.temp }}/gentoo-overlay/app-misc/d4s/||" >> dist/checksums.txt
+          
+          # Upload ebuild
+          gh release upload "${{ github.ref_name }}" "${EBUILD_FILE}" --repo "${{ github.repository }}"
+
+      - name: Update checksums.txt with all artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" dist/checksums.txt --clobber --repo "${{ github.repository }}"
 
       - uses: actions/attest-build-provenance@v3
         with:
