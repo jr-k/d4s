@@ -137,16 +137,6 @@ sudo zypper install d4s
 ```
 </details>
 
-<details>
-<summary><b>OPKG (OpenWrt)</b></summary>
-
-```bash
-echo "src/gz d4s https://opkg.d4scli.io" >> /etc/opkg/customfeeds.conf
-opkg update
-opkg install d4s
-```
-</details>
-
 > ### Windows
 
 <details>
