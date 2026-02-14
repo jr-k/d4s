@@ -28,6 +28,8 @@ builds:
         goarch: "386"
       - goos: darwin
         goarch: arm
+      - goos: windows
+        goarch: arm
 
     ldflags:
       - -s -w
