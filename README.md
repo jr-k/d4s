@@ -197,7 +197,7 @@ d4s:
     # Number of tail lines to fetch initially. Default: 100
     tail: 200
     # How far back to go in the log timeline (seconds). -1 = tail mode. Default: -1
-    sinceSeconds: 300
+    sinceSeconds: -1
     # Enable line wrapping in log viewer. Default: false
     textWrap: false
     # Disable auto-scroll when new log lines arrive. Default: false
