@@ -1,0 +1,67 @@
+# -----------------------------------------------------------------------------
+# Nord skin for d4s
+# Arctic-inspired palette with vivid aurora accents on a deep black canvas.
+#
+# Install: copy this file to ~/.config/d4s/skins/nord.yaml
+# Activate: set d4s.ui.skin: nord in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Base
+background: &background "#000000"
+foreground: &foreground "#e5e9f0"
+snow:       &snow       "#eceff4"
+muted:      &muted      "#4c566a"
+surface:    &surface    "#2e3440"
+
+# Frost (icy blues)
+frost1:     &frost1     "#8fbcbb"
+frost2:     &frost2     "#88c0d0"
+frost3:     &frost3     "#81a1c1"
+frost_deep: &frost_deep "#5e81ac"
+
+# Aurora (vivid)
+aurora_red:    &aurora_red    "#bf616a"
+aurora_orange: &aurora_orange "#d08770"
+aurora_yellow: &aurora_yellow "#ebcb8b"
+aurora_green:  &aurora_green  "#a3be8c"
+aurora_purple: &aurora_purple "#b48ead"
+
+# Skin definition
+d4s:
+  body:
+    fgColor: *foreground
+    bgColor: *background
+    logoColor: *frost2
+    logoShadowColor: *frost_deep
+  frame:
+    border:
+      fgColor: *frost2
+    crumbs:
+      fgColor: *snow
+      bgColor: *surface
+    title:
+      fgColor: *frost1
+      highlightColor: *aurora_orange
+      filterColor: *aurora_purple
+      titleColor: *frost2
+      scopeColor: *aurora_green
+    menu:
+      keyColor: *frost2
+    status:
+      errorColor: *aurora_red
+      infoColor: *aurora_green
+      pendingColor: *frost3
+      warnColor: *aurora_yellow
+      highlightColor: *aurora_orange
+      completedColor: *muted
+      dimColor: *muted
+      purpleColor: *aurora_purple
+      blueColor: *frost_deep
+  views:
+    table:
+      cursorFgColor: *snow
+      cursorBgColor: *surface
+      markColor: *aurora_green
+      header:
+        fgColor: *foreground
+        focusColor: *aurora_orange

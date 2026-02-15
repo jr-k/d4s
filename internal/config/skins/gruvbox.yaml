@@ -1,0 +1,70 @@
+# -----------------------------------------------------------------------------
+# Gruvbox skin for d4s
+# Based on the retro groove color scheme by Pavel Pertsev.
+# https://github.com/morhetz/gruvbox
+#
+# Install: copy this file to ~/.config/d4s/skins/gruvbox.yaml
+# Activate: set d4s.ui.skin: gruvbox in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Background tones
+bg_hard:  &bg_hard  "#1d2021"
+bg:       &bg       "#282828"
+bg1:      &bg1      "#3c3836"
+bg2:      &bg2      "#504945"
+bg3:      &bg3      "#665c54"
+
+# Foreground tones
+fg:       &fg       "#ebdbb2"
+fg1:      &fg1      "#d5c4a1"
+fg3:      &fg3      "#bdae93"
+fg4:      &fg4      "#a89984"
+
+# Colors
+red:      &red      "#fb4934"
+green:    &green    "#b8bb26"
+yellow:   &yellow   "#fabd2f"
+blue:     &blue     "#83a598"
+purple:   &purple   "#d3869b"
+aqua:     &aqua     "#8ec07c"
+orange:   &orange   "#fe8019"
+
+# Skin definition
+d4s:
+  body:
+    fgColor: *fg
+    bgColor: *bg_hard
+    logoColor: *orange
+    logoShadowColor: *red
+  frame:
+    border:
+      fgColor: *bg3
+    crumbs:
+      fgColor: *fg
+      bgColor: *bg2
+    title:
+      fgColor: *blue
+      highlightColor: *orange
+      filterColor: *purple
+      titleColor: *aqua
+      scopeColor: *yellow
+    menu:
+      keyColor: *orange
+    status:
+      errorColor: *red
+      infoColor: *green
+      pendingColor: *blue
+      warnColor: *yellow
+      highlightColor: *orange
+      completedColor: *fg4
+      dimColor: *bg3
+      purpleColor: *purple
+      blueColor: *blue
+  views:
+    table:
+      cursorFgColor: *fg
+      cursorBgColor: *bg1
+      markColor: *green
+      header:
+        fgColor: *fg1
+        focusColor: *orange

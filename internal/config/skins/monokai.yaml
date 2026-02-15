@@ -1,0 +1,60 @@
+# -----------------------------------------------------------------------------
+# Monokai skin for d4s
+# Based on the classic Monokai color scheme by Wimer Hazenberg.
+#
+# Install: copy this file to ~/.config/d4s/skins/monokai.yaml
+# Activate: set d4s.ui.skin: monokai in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Styles
+foreground: &foreground "#f8f8f2"
+background: &background "#272822"
+selection:  &selection  "#49483e"
+comment:    &comment    "#75715e"
+cyan:       &cyan       "#66d9ef"
+green:      &green      "#a6e22e"
+orange:     &orange     "#fd971f"
+pink:       &pink       "#f92672"
+purple:     &purple     "#ae81ff"
+red:        &red        "#f92672"
+yellow:     &yellow     "#e6db74"
+
+# Skin definition
+d4s:
+  body:
+    fgColor: *foreground
+    bgColor: *background
+    logoColor: *pink
+    logoShadowColor: *purple
+  frame:
+    border:
+      fgColor: *comment
+    crumbs:
+      fgColor: *foreground
+      bgColor: *selection
+    title:
+      fgColor: *cyan
+      highlightColor: *orange
+      filterColor: *pink
+      titleColor: *green
+      scopeColor: *purple
+    menu:
+      keyColor: *pink
+    status:
+      errorColor: *red
+      infoColor: *green
+      pendingColor: *cyan
+      warnColor: *orange
+      highlightColor: *yellow
+      completedColor: *comment
+      dimColor: *comment
+      purpleColor: *purple
+      blueColor: *cyan
+  views:
+    table:
+      cursorFgColor: *foreground
+      cursorBgColor: *selection
+      markColor: *green
+      header:
+        fgColor: *foreground
+        focusColor: *pink

@@ -1,0 +1,63 @@
+# -----------------------------------------------------------------------------
+# Tokyo Night skin for d4s
+# Neon-lit cyberpunk palette inspired by the glow of Shinjuku at night.
+#
+# Install: copy this file to ~/.config/d4s/skins/tokyonight.yaml
+# Activate: set d4s.ui.skin: tokyonight in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Base
+background: &background "#0f0b1e"
+foreground: &foreground "#dcdfe4"
+surface:    &surface    "#1e1a36"
+muted:      &muted      "#514a6d"
+
+# Neon accents
+neon_pink:   &neon_pink   "#ff3399"
+neon_blue:   &neon_blue   "#36d7ff"
+neon_purple: &neon_purple "#c47aff"
+neon_green:  &neon_green  "#42ff88"
+neon_orange: &neon_orange "#ff8c42"
+neon_yellow: &neon_yellow "#ffd642"
+neon_red:    &neon_red    "#ff4466"
+neon_cyan:   &neon_cyan   "#00e8d0"
+
+# Skin definition
+d4s:
+  body:
+    fgColor: *foreground
+    bgColor: *background
+    logoColor: *neon_pink
+    logoShadowColor: *neon_purple
+  frame:
+    border:
+      fgColor: *neon_purple
+    crumbs:
+      fgColor: *foreground
+      bgColor: *surface
+    title:
+      fgColor: *neon_blue
+      highlightColor: *neon_orange
+      filterColor: *neon_pink
+      titleColor: *neon_cyan
+      scopeColor: *neon_purple
+    menu:
+      keyColor: *neon_pink
+    status:
+      errorColor: *neon_red
+      infoColor: *neon_green
+      pendingColor: *neon_blue
+      warnColor: *neon_yellow
+      highlightColor: *neon_orange
+      completedColor: *muted
+      dimColor: *muted
+      purpleColor: *neon_purple
+      blueColor: *neon_blue
+  views:
+    table:
+      cursorFgColor: *foreground
+      cursorBgColor: *surface
+      markColor: *neon_green
+      header:
+        fgColor: *foreground
+        focusColor: *neon_pink
