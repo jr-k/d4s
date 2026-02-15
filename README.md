@@ -189,6 +189,8 @@ d4s:
     crumbsless: false
     # Invert all theme colors (dark↔light), preserving hue. Default: false
     invert: false
+    # Skin name — loads from $XDG_DATA_HOME/d4s/skins/<name>.yaml. Default: "default" (builtin: default, dracula)
+    skin: "default"
 
   # Log viewer settings
   logger:

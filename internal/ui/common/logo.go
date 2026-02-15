@@ -7,8 +7,8 @@ import (
 )
 
 func GetLogo() []string {
-	p := styles.TagAccentLight     // primary (light orange)
-	s := styles.TagAccent // shadow (darker orange)
+	p := styles.TagLogo        // primary
+	s := styles.TagLogoShadow // shadow
 	return []string{
 		fmt.Sprintf(" [%s]██████[%s]╗[%s]   ██[%s]╗[%s]  ██[%s]╗[%s]   █████[%s]╗[%s] ", p, s, p, s, p, s, p, s, p),
 		fmt.Sprintf(" [%s]██[%s]╔══[%s]██[%s]╗  [%s]██[%s]║  [%s]██[%s]║  [%s]██[%s]╔═══╝ ", p, s, p, s, p, s, p, s, p, s),

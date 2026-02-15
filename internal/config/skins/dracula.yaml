@@ -1,0 +1,63 @@
+# -----------------------------------------------------------------------------
+# Dracula skin for d4s
+# Based on https://draculatheme.com
+#
+# Install: copy this file to ~/.config/d4s/skins/dracula.yaml
+# Activate: set d4s.ui.skin: dracula in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Styles (YAML anchors for color reuse)
+foreground: &foreground "#f8f8f2"
+background: &background "#282a36"
+current_line: &current_line "#44475a"
+selection: &selection "#44475a"
+comment: &comment "#6272a4"
+cyan: &cyan "#8be9fd"
+green: &green "#50fa7b"
+orange: &orange "#ffb86c"
+pink: &pink "#ff79c6"
+purple: &purple "#bd93f9"
+red: &red "#ff5555"
+yellow: &yellow "#f1fa8c"
+
+# Skin definition
+d4s:
+  # General body styles
+  body:
+    fgColor: *foreground
+    bgColor: *background
+    logoColor: *orange
+    logoShadowColor: *comment
+  # Frame styles (borders, titles, crumbs, status indicators)
+  frame:
+    border:
+      fgColor: *cyan
+    crumbs:
+      fgColor: *foreground
+      bgColor: *current_line
+    title:
+      fgColor: *purple
+      highlightColor: *orange
+      filterColor: *purple
+    menu:
+      keyColor: *cyan
+    # Resource status and indicator styles
+    status:
+      errorColor: *red
+      infoColor: *green
+      pendingColor: *cyan
+      warnColor: *yellow
+      highlightColor: *orange
+      completedColor: *comment
+      dimColor: *comment
+      purpleColor: *purple
+      blueColor: *cyan
+  # View-specific styles
+  views:
+    table:
+      cursorFgColor: *foreground
+      cursorBgColor: *selection
+      markColor: *green
+      header:
+        fgColor: *foreground
+        focusColor: *orange

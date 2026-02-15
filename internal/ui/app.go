@@ -95,6 +95,11 @@ func NewApp(contextName string, cfg *config.Config) (*App, error) {
 	tview.Borders.HorizontalFocus = '─'
 	tview.Borders.VerticalFocus = '│'
 
+	// Apply skin if configured
+	if skin := config.LoadSkin(cfg.D4S.UI.Skin); skin != nil {
+		styles.ApplySkin(skin)
+	}
+
 	// Apply color inversion if configured
 	if cfg.D4S.UI.Invert {
 		styles.InvertColors()

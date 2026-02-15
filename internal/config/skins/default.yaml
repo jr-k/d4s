@@ -1,0 +1,65 @@
+# -----------------------------------------------------------------------------
+# Default skin for d4s
+# This is the built-in color palette shipped with d4s.
+#
+# Install: copy this file to ~/.config/d4s/skins/default.yaml
+# Activate: set d4s.ui.skin: default in ~/.config/d4s/config.yaml
+# -----------------------------------------------------------------------------
+
+# Styles (YAML anchors for color reuse)
+foreground: &foreground "#ffffff"
+background: &background "#000000"
+selection: &selection "#44475a"
+comment: &comment "#696969"
+cyan: &cyan "#00ffff"
+green: &green "#50fa7b"
+orange: &orange "#ffa503"
+orange_light: &orange_light "#ffb86c"
+pink: &pink "#ff00ff"
+purple: &purple "#bd93f9"
+red: &red "#ff5555"
+yellow: &yellow "#f1fa8c"
+blue: &blue "#89cefa"
+blue_key: &blue_key "#2090ff"
+
+# Skin definition
+d4s:
+  # General body styles
+  body:
+    fgColor: *foreground
+    bgColor: *background
+    logoColor: *orange_light
+    logoShadowColor: *orange
+  # Frame styles (borders, titles, crumbs, status indicators)
+  frame:
+    border:
+      fgColor: *blue
+    crumbs:
+      fgColor: "#f8f8f2"
+      bgColor: *selection
+    title:
+      fgColor: *purple
+      highlightColor: *orange
+      filterColor: *purple
+    menu:
+      keyColor: *blue_key
+    # Resource status and indicator styles
+    status:
+      errorColor: *red
+      infoColor: *green
+      pendingColor: *blue
+      warnColor: *yellow
+      highlightColor: "#ff8c03"
+      completedColor: "#778899"
+      dimColor: *comment
+      purpleColor: "#6723ba"
+      blueColor: "#017bff"
+  # View-specific styles
+  views:
+    table:
+      cursorFgColor: *foreground
+      cursorBgColor: *selection
+      markColor: "#99fb98"
+      header:
+        fgColor: *foreground
+        focusColor: *orange_light

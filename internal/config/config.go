@@ -34,6 +34,7 @@ type UIConfig struct {
 	Logoless    bool   `yaml:"logoless"`
 	Crumbsless  bool   `yaml:"crumbsless"`
 	Invert      bool   `yaml:"invert"`
+	Skin        string `yaml:"skin"`
 }
 
 type LoggerConfig struct {
@@ -147,6 +148,15 @@ func configDir() string {
 	return filepath.Join(home, ".config", "d4s")
 }
 
+// ensureConfigDirs creates the config directory and skins subdirectory if they don't exist.
+func ensureConfigDirs() {
+	dir := configDir()
+	if dir == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Join(dir, "skins"), 0o755)
+}
+
 // Load reads the config from $XDG_CONFIG_HOME/d4s/config.yaml.
 // If the file doesn't exist or can't be parsed, defaults are returned.
 func Load() *Config {
@@ -156,6 +166,8 @@ func Load() *Config {
 	if dir == "" {
 		return cfg
 	}
+
+	ensureConfigDirs()
 
 	configPath := filepath.Join(dir, "config.yaml")
 	data, err := os.ReadFile(configPath)
