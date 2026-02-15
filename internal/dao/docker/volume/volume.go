@@ -2,6 +2,7 @@ package volume
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
+var reAnonymousVolume = regexp.MustCompile(`^[a-f0-9]{64}$`)
+
 type Manager struct {
 	cli *client.Client
 	ctx context.Context
@@ -25,18 +28,27 @@ func NewManager(cli *client.Client, ctx context.Context) *Manager {
 
 // Volume Model
 type Volume struct {
-	Name    string
-	Driver  string
-	Mount   string
-	Created string
-	Size    string
-	Scope   string
-	UsedBy  string
+	Name      string
+	Driver    string
+	Mount     string
+	Created   string
+	Size      string
+	Scope     string
+	UsedBy    string
+	Anonymous bool
+}
+
+func IsAnonymousVolume(name string) bool {
+	return reAnonymousVolume.MatchString(name)
 }
 
 func (v Volume) GetID() string { return v.Name }
 func (v Volume) GetCells() []string {
-	return []string{v.Name, v.Driver, v.Scope, v.UsedBy, v.Mount, v.Created, v.Size}
+	anon := ""
+	if v.Anonymous {
+		anon = "Yes"
+	}
+	return []string{v.Name, v.Driver, v.Scope, v.UsedBy, v.Mount, v.Created, v.Size, anon}
 }
 
 func (v Volume) GetStatusColor() (tcell.Color, tcell.Color) {
@@ -59,6 +71,11 @@ func (v Volume) GetColumnValue(column string) string {
 		return v.Size
 	case "used by":
 		return v.UsedBy
+	case "anon":
+		if v.Anonymous {
+			return "Yes"
+		}
+		return ""
 	}
 	return ""
 }
@@ -68,7 +85,7 @@ func (v Volume) GetDefaultColumn() string {
 }
 
 func (v Volume) GetDefaultSortColumn() string {
-	return "Name"
+	return "Anon"
 }
 
 type ContainerVolume struct {
@@ -120,12 +137,13 @@ func (m *Manager) List() ([]common.Resource, error) {
 		}
 
 		res = append(res, Volume{
-			Name:    v.Name,
-			Driver:  v.Driver,
-			Mount:   common.ShortenPath(v.Mountpoint),
-			Created: created,
-			Size:    size,
-			Scope:   v.Scope,
+			Name:      v.Name,
+			Driver:    v.Driver,
+			Mount:     common.ShortenPath(v.Mountpoint),
+			Created:   created,
+			Size:      size,
+			Scope:     v.Scope,
+			Anonymous: IsAnonymousVolume(v.Name),
 		})
 	}
 	return res, nil

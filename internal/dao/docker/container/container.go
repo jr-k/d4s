@@ -174,9 +174,9 @@ func (m *Manager) updateStats(containers []types.Container) {
 				
 				colorTag := ""
 				if cpuPct >= 90.0 {
-					colorTag = "[red::b]"
+					colorTag = fmt.Sprintf("[%s::b]", styles.TagError)
 				} else if cpuPct >= 75.0 {
-					colorTag = "[#fd540f::b]"
+					colorTag = fmt.Sprintf("[%s::b]", styles.TagAccent)
 				}
 
 				cpuStr := fmt.Sprintf("%s %3.0f %%", colorTag, cpuPct)

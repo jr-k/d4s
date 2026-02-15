@@ -1,6 +1,7 @@
 package command
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -90,7 +91,7 @@ func NewCommandComponent(app common.AppController) *CommandComponent {
 		SetFieldBackgroundColor(styles.ColorBg).
 		SetLabelColor(styles.ColorWhite).
 		SetFieldTextColor(styles.ColorFg).
-		SetLabel("[#ffb86c::b]VIEW> [-:-:-]")
+		SetLabel(fmt.Sprintf("[%s::b]VIEW> [-:%s:-]", styles.TagAccentLight, styles.TagBg))
 	
 	c.SetBorder(true).
 		SetBorderColor(styles.ColorAccentLight).
@@ -234,15 +235,15 @@ func (c *CommandComponent) setupHandlers() {
 }
 
 func (c *CommandComponent) Activate(initial string) {
-	label := "[#ffb86c::b]CMD> [-:-:-]" // Defaults to Command
+	label := fmt.Sprintf("[%s:%s:b]CMD> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg) // Defaults to Command
 	
 	if strings.HasPrefix(initial, "/") {
-		label = "[#ffb86c::b]FILTER> [-:-:-]"
+		label = fmt.Sprintf("[%s:%s:b]FILTER> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg)
 		
 		// Check if we are in Inspector -> SEARCH context
 		front, _ := c.App.GetPages().GetFrontPage()
 		if front == "inspect" {
-			label = "[#ffb86c::b]SEARCH> [-:-:-]"
+			label = fmt.Sprintf("[%s:%s:b]SEARCH> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg)
 		}
 	}
 	
@@ -253,7 +254,7 @@ func (c *CommandComponent) Activate(initial string) {
 
 func (c *CommandComponent) Reset() {
 	c.View.SetText("")
-	c.View.SetLabel("[#ffb86c::b]VIEW> [-:-:-]")
+	c.View.SetLabel(fmt.Sprintf("[%s:%s:b]VIEW> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg))
 	c.View.SetSuggestion("")
 	c.currentText = ""
 }
@@ -263,7 +264,7 @@ func (c *CommandComponent) HasFocus() bool {
 }
 
 func (c *CommandComponent) SetFilter(filter string) {
-	c.View.SetLabel("[#ffb86c::b]FILTER> [-:-:-]")
+	c.View.SetLabel(fmt.Sprintf("[%s:%s:b]FILTER> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg))
 	c.View.SetText(filter)
 	c.View.SetSuggestion("")
 }

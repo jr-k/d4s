@@ -114,8 +114,6 @@ func (a *App) RefreshCurrentView() {
 		return
 	}
 	
-	filter := a.ActiveFilter
-
 	// 1. Immediate Updates (Optimistic UI)
 	// UpdateShortcuts modifies the UI. Must be called from main thread.
 	// Since RefreshCurrentView is sometimes called from valid UI context (SwitchTo) 
@@ -149,7 +147,11 @@ func (a *App) RefreshCurrentView() {
 			if currentPage != page {
 				return
 			}
-			
+
+			// Read filter at callback time (not before the fetch) to avoid
+			// overwriting a filter the user set while the fetch was in flight.
+			filter := a.ActiveFilter
+
 			v.SetFilter(filter)
 			v.CurrentScope = a.GetActiveScope()
 

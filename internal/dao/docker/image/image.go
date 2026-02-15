@@ -123,7 +123,7 @@ func (m *Manager) Pull(tag string) error {
 	
 	reader, err := m.cli.ImagePull(m.ctx, tag, image.PullOptions{})
 	if err != nil {
-		m.SetPullStatus(tag, " [red]✘ Error[-]")
+		m.SetPullStatus(tag, fmt.Sprintf(" [%s]✘ Error[-]", styles.TagError))
 		go func() {
 			time.Sleep(5 * time.Second)
 			m.SetPullStatus(tag, "")

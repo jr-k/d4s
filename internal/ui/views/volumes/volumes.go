@@ -17,7 +17,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-var Headers = []string{"NAME", "DRIVER", "SCOPE", "USED BY", "MOUNTPOINT", "CREATED", "SIZE"}
+var Headers = []string{"NAME", "DRIVER", "SCOPE", "USED BY", "MOUNTPOINT", "CREATED", "SIZE", "ANON"}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	scope := app.GetActiveScope()
