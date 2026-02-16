@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -241,11 +243,11 @@ func Shell(app common.AppController, id string) {
 			}
 		}()
 
+		signal.Reset(os.Interrupt, syscall.SIGTERM)
+
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Mounting volume %s in temporary alpine container...\n", id)
 
-		// Create a temporary container that mounts the volume
-		// We use sh as the shell
 		containerName := fmt.Sprintf("d4s-vol-shell-%d", time.Now().UnixNano())
 		shellImage := app.GetConfig().D4S.ShellPod.Image
 		cmd := exec.Command("docker", "run", "--pull", "always", "--rm", "--name", containerName, "-it", "-v", id+":/data", "-p", "33000-33100:33000-33100", "-w", "/data", shellImage, "sh")
@@ -253,14 +255,19 @@ func Shell(app common.AppController, id string) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
-		// Ensure cleanup
 		defer func() {
 			exec.Command("docker", "rm", "-f", containerName).Run()
 		}()
 
 		if err := cmd.Run(); err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				if code == 130 || code == 137 || code == 0 {
+					return
+				}
+			}
 			fmt.Printf("\nError executing shell: %v\n", err)
-			fmt.Println("Ensure 'alpine' image is available or that you have permission to run containers.")
+			fmt.Println("Ensure shell image is available or that you have permission to run containers.")
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
 		}

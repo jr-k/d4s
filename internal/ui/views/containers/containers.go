@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -360,6 +362,8 @@ func Shell(app common.AppController, id string, asRoot bool) {
 			}
 		}()
 
+		signal.Reset(os.Interrupt, syscall.SIGTERM)
+
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Detecting shell for %s...\n", id)
 
@@ -367,7 +371,6 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		var selectedShell string
 
 		for _, shell := range shells {
-			// Check if shell exists
 			var checkCmd *exec.Cmd
 			if asRoot {
 				checkCmd = exec.Command("docker", "exec", "-u", "root", id, shell, "-c", "exit 0")
@@ -393,10 +396,6 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		}
 		fmt.Printf("Entering shell %s%s for %s (type 'exit' or CTRL+D to return)...\n", selectedShell, shellMode, id)
 
-		// Use proper PTY handling or simple command depending on platform
-		// For basic usage, standard io connection is usually enough but Suspend/Restore is tricky
-		// We MUST ensure tview is fully suspended
-
 		var cmd *exec.Cmd
 		if asRoot {
 			cmd = exec.Command("docker", "exec", "-u", "root", "-it", id, selectedShell)
@@ -408,8 +407,12 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			// If it's a legitimate exit (like 127 or 130), we might not want to pause
-			// But usually if docker exec fails we want to see why
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := exitErr.ExitCode()
+				if code == 130 || code == 137 || code == 0 {
+					return
+				}
+			}
 			fmt.Printf("\nError executing shell: %v\nPress Enter to continue...", err)
 			fmt.Scanln()
 		}
