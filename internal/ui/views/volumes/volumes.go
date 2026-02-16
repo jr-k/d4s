@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -244,18 +245,28 @@ func Shell(app common.AppController, id string) {
 		}()
 
 		fmt.Print("\033[H\033[2J")
-		fmt.Printf("Mounting volume %s in temporary alpine container...\n", id)
+
+		// Kill any leftover d4s shell containers from previous sessions
+		if out, _ := exec.Command("docker", "ps", "-aq", "--filter", "name=d4s-vol-shell-").Output(); len(out) > 0 {
+			ids := strings.Fields(strings.TrimSpace(string(out)))
+			if len(ids) > 0 {
+				fmt.Printf("Cleaning up %d previous shell container(s)...\n", len(ids))
+				args := append([]string{"rm", "-f"}, ids...)
+				exec.Command("docker", args...).Run()
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+
+		fmt.Printf("Mounting volume %s in temporary alpine container (CTRL+D or 'exit' to return)...\n", id)
 
 		containerName := fmt.Sprintf("d4s-vol-shell-%d", time.Now().UnixNano())
 		shellImage := app.GetConfig().D4S.ShellPod.Image
-		cmd := exec.Command("docker", "run", "--pull", "always", "--rm", "--name", containerName, "-it", "-v", id+":/data", "-p", "33000-33100:33000-33100", "-w", "/data", shellImage, "sh")
+		cmd := exec.Command("docker", "run", "--pull", "always", "--rm", "--name", containerName, "-it", "-v", id+":/data", "-p", "33000-33100:33000-33100", "-w", "/data", shellImage, "sh", "-c", `sh; printf "\nReturning to d4s...\n"`)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		// Swallow signals so d4s doesn't die on CTRL+C.
-		// We use Notify (not Ignore) so Docker inherits SIG_DFL
-		// and can set up its own signal forwarding to the container.
 		signal.Reset(os.Interrupt, syscall.SIGTERM)
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -264,33 +275,11 @@ func Shell(app common.AppController, id string) {
 			close(sigChan)
 		}()
 		go func() {
-			const maxSig = 3
-			count := 0
 			for range sigChan {
-				count++
-				if count >= maxSig {
-					fmt.Printf("\n(%d/%d) Force killing shell, returning to d4s...\n", count, maxSig)
-					exec.Command("docker", "rm", "-f", containerName).Run()
-					if cmd.Process != nil {
-						cmd.Process.Kill()
-					}
-					return
-				}
-				fmt.Printf("\n(%d/%d) Press CTRL+C %d more time(s) to force quit, or CTRL+D to exit cleanly\n", count, maxSig, maxSig-count)
 			}
 		}()
 
-		if err := cmd.Start(); err != nil {
-			fmt.Printf("\nError starting shell: %v\n", err)
-			fmt.Println("Ensure shell image is available or that you have permission to run containers.")
-			fmt.Println("Press Enter to continue...")
-			fmt.Scanln()
-			return
-		}
-
-		err := cmd.Wait()
-		fmt.Printf("\nClosing shell, returning to d4s...\n")
-
+		err := cmd.Run()
 		go exec.Command("docker", "rm", "-f", containerName).Run()
 
 		if err != nil {
@@ -300,8 +289,7 @@ func Shell(app common.AppController, id string) {
 					return
 				}
 			}
-			fmt.Printf("Error executing shell: %v\n", err)
-			fmt.Println("Ensure shell image is available or that you have permission to run containers.")
+			fmt.Printf("Error: %v\n", err)
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
 		}
