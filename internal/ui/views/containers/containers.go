@@ -362,18 +362,6 @@ func Shell(app common.AppController, id string, asRoot bool) {
 			}
 		}()
 
-		signal.Reset(os.Interrupt, syscall.SIGTERM)
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		defer func() {
-			signal.Stop(sigChan)
-			close(sigChan)
-		}()
-		go func() {
-			for range sigChan {
-			}
-		}()
-
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Detecting shell for %s...\n", id)
 
@@ -416,19 +404,48 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
-		if err := cmd.Run(); err != nil {
+		signal.Reset(os.Interrupt, syscall.SIGTERM)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		defer func() {
+			signal.Stop(sigChan)
+			close(sigChan)
+		}()
+		go func() {
+			const maxSig = 3
+			count := 0
+			for range sigChan {
+				count++
+				if count >= maxSig {
+					fmt.Printf("\n(%d/%d) Force killing shell, returning to d4s...\n", count, maxSig)
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					return
+				}
+				fmt.Printf("\n(%d/%d) Press CTRL+C %d more time(s) to force quit, or CTRL+D to exit cleanly\n", count, maxSig, maxSig-count)
+			}
+		}()
+
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("\nError starting shell: %v\nPress Enter to continue...", err)
+			fmt.Scanln()
+			return
+		}
+
+		err := cmd.Wait()
+		fmt.Printf("\nClosing shell, returning to d4s...\n")
+
+		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
-				if code == 130 || code == 137 || code == 0 {
+				if code == 130 || code == 137 || code == 0 || code == -1 {
 					return
 				}
 			}
-			fmt.Printf("\nError executing shell: %v\nPress Enter to continue...", err)
+			fmt.Printf("Error executing shell: %v\nPress Enter to continue...", err)
 			fmt.Scanln()
 		}
-
-		// Clear again to ensure clean return
-		fmt.Print("\033[H\033[2J")
 	})
 
 	// Fix race conditions/glitches where screen isn't fully restored

@@ -243,23 +243,6 @@ func Shell(app common.AppController, id string) {
 			}
 		}()
 
-		// Remove global signal handlers (main.go's) and set up a local
-		// handler that swallows signals during the shell session.
-		// We use Notify (not Ignore) so the OS-level disposition stays
-		// "handled" rather than SIG_IGN — child processes inherit SIG_DFL
-		// and Docker can set up its own signal forwarding to the container.
-		signal.Reset(os.Interrupt, syscall.SIGTERM)
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		defer func() {
-			signal.Stop(sigChan)
-			close(sigChan)
-		}()
-		go func() {
-			for range sigChan {
-			}
-		}()
-
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Mounting volume %s in temporary alpine container...\n", id)
 
@@ -270,22 +253,58 @@ func Shell(app common.AppController, id string) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
-		if err := cmd.Run(); err != nil {
+		// Swallow signals so d4s doesn't die on CTRL+C.
+		// We use Notify (not Ignore) so Docker inherits SIG_DFL
+		// and can set up its own signal forwarding to the container.
+		signal.Reset(os.Interrupt, syscall.SIGTERM)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		defer func() {
+			signal.Stop(sigChan)
+			close(sigChan)
+		}()
+		go func() {
+			const maxSig = 3
+			count := 0
+			for range sigChan {
+				count++
+				if count >= maxSig {
+					fmt.Printf("\n(%d/%d) Force killing shell, returning to d4s...\n", count, maxSig)
+					exec.Command("docker", "rm", "-f", containerName).Run()
+					if cmd.Process != nil {
+						cmd.Process.Kill()
+					}
+					return
+				}
+				fmt.Printf("\n(%d/%d) Press CTRL+C %d more time(s) to force quit, or CTRL+D to exit cleanly\n", count, maxSig, maxSig-count)
+			}
+		}()
+
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("\nError starting shell: %v\n", err)
+			fmt.Println("Ensure shell image is available or that you have permission to run containers.")
+			fmt.Println("Press Enter to continue...")
+			fmt.Scanln()
+			return
+		}
+
+		err := cmd.Wait()
+		fmt.Printf("\nClosing shell, returning to d4s...\n")
+
+		go exec.Command("docker", "rm", "-f", containerName).Run()
+
+		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
-				if code == 130 || code == 137 || code == 0 {
-					go exec.Command("docker", "rm", "-f", containerName).Run()
+				if code == 130 || code == 137 || code == 0 || code == -1 {
 					return
 				}
 			}
-			fmt.Printf("\nError executing shell: %v\n", err)
+			fmt.Printf("Error executing shell: %v\n", err)
 			fmt.Println("Ensure shell image is available or that you have permission to run containers.")
 			fmt.Println("Press Enter to continue...")
 			fmt.Scanln()
 		}
-
-		go exec.Command("docker", "rm", "-f", containerName).Run()
-		fmt.Print("\033[H\033[2J")
 	})
 
 	if app.GetScreen() != nil {
