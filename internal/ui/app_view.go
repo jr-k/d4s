@@ -214,6 +214,45 @@ func (a *App) RefreshCurrentView() {
 	})
 }
 
+// preloadViews fetches data for all views in background so navigation is instant.
+// The initial view is skipped since it's already being refreshed by auto-refresh.
+func (a *App) preloadViews() {
+	initialView := a.resolveDefaultView()
+
+	for title, v := range a.Views {
+		if title == initialView {
+			continue // Already being refreshed by StartAutoRefresh
+		}
+		if v.FetchFunc == nil {
+			continue
+		}
+
+		go func(title string, v *view.ResourceView) {
+			data, err := v.FetchFunc(a, v)
+			if err != nil {
+				return // Silently ignore preload errors
+			}
+
+			headers := v.Headers // Capture after fetch (FetchFunc may update headers)
+
+			a.SafeQueueUpdateDraw(func() {
+				// Don't overwrite if the user already navigated here
+				currentPage, _ := a.Pages.GetFrontPage()
+				if currentPage == title {
+					return
+				}
+
+				v.CurrentScope = nil
+				v.Update(headers, data)
+
+				countStr := fmt.Sprintf("%d", len(v.Data))
+				viewTitle := a.formatViewTitle(title, countStr, "")
+				a.updateViewTitle(v, viewTitle)
+			})
+		}(title, v)
+	}
+}
+
 func (a *App) formatViewTitle(viewName string, countStr string, filter string) string {
 	viewName = strings.ToLower(viewName)
 	

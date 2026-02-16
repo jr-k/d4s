@@ -96,17 +96,19 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 		// Update Command Line (Reset)
 		a.CmdLine.Reset()
 
-		// Show loading if the scope has changed (e.g. drilling down to container volumes)
-		shouldClear := false
+		// Determine if the scope changed (drill-down or return from drill-down)
+		scopeChanged := false
 		if a.ActiveScope != nil {
-			if v.CurrentScope == nil || v.CurrentScope.Value != a.ActiveScope.Value || v.CurrentScope.Type != a.ActiveScope.Type {
-				shouldClear = true
-			}
+			scopeChanged = v.CurrentScope == nil || v.CurrentScope.Value != a.ActiveScope.Value || v.CurrentScope.Type != a.ActiveScope.Type
 		} else if v.CurrentScope != nil {
-			shouldClear = true
+			scopeChanged = true
 		}
 
-		if shouldClear || len(v.Data) == 0 {
+		if scopeChanged {
+			// Scope changed: stale data belongs to a different context, must clear
+			v.SetLoading(true)
+		} else if len(v.Data) == 0 && len(v.RawData) == 0 {
+			// No data at all (preload hasn't completed yet): show loading
 			v.SetLoading(true)
 		}
 

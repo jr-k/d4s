@@ -156,6 +156,9 @@ func (a *App) Run() error {
 	shellImage := a.Cfg.D4S.ShellPod.Image
 	go exec.Command("docker", "pull", shellImage).Run()
 
+	// Preload all views data in background for instant navigation
+	a.preloadViews()
+
 	return a.TviewApp.SetRoot(a.Layout, true).Run()
 }
 

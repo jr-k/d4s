@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/cli/cli/config"
@@ -42,6 +43,19 @@ type Node = node.Node
 type Secret = secret.Secret
 type ComposeProject = compose.ComposeProject
 
+// Cached container info for instant scoped queries (drill-down)
+type containerInfoCache struct {
+	Mounts []mountInfoCache
+	NetIDs map[string]bool
+}
+
+type mountInfoCache struct {
+	Type        string
+	Name        string
+	Source      string
+	Destination string
+}
+
 type DockerClient struct {
 	Cli *client.Client
 	Ctx context.Context
@@ -56,6 +70,12 @@ type DockerClient struct {
 	Node      *node.Manager
 	Secret    *secret.Manager
 	Compose   *compose.Manager
+
+	// Resource cache for fast scoped queries
+	cacheMu          sync.RWMutex
+	volumeCache      []common.Resource            // Raw Volume.List() results
+	networkCache     []common.Resource            // Network.List() results
+	containerInfoMap map[string]containerInfoCache // containerID -> mount/network info
 }
 
 func NewDockerClient(contextName string, apiTimeout time.Duration) (*DockerClient, error) {
@@ -74,17 +94,18 @@ func NewDockerClient(contextName string, apiTimeout time.Duration) (*DockerClien
 	ctx := context.Background()
 	
 	return &DockerClient{
-		Cli:         cli,
-		Ctx:         ctx,
-		ContextName: ctxName,
-		Container:   container.NewManager(cli, ctx),
-		Image:       image.NewManager(cli, ctx),
-		Volume:      volume.NewManager(cli, ctx),
-		Network:     network.NewManager(cli, ctx),
-		Service:     service.NewManager(cli, ctx),
-		Node:        node.NewManager(cli, ctx),
-		Secret:      secret.NewManager(cli, ctx),
-		Compose:     compose.NewManager(cli, ctx),
+		Cli:              cli,
+		Ctx:              ctx,
+		ContextName:      ctxName,
+		Container:        container.NewManager(cli, ctx),
+		Image:            image.NewManager(cli, ctx),
+		Volume:           volume.NewManager(cli, ctx),
+		Network:          network.NewManager(cli, ctx),
+		Service:          service.NewManager(cli, ctx),
+		Node:             node.NewManager(cli, ctx),
+		Secret:           secret.NewManager(cli, ctx),
+		Compose:          compose.NewManager(cli, ctx),
+		containerInfoMap: make(map[string]containerInfoCache),
 	}, nil
 }
 
@@ -225,10 +246,18 @@ func (d *DockerClient) ListVolumes() ([]common.Resource, error) {
 		return nil, err
 	}
 
+	// Cache raw volume list for scoped queries (avoids DiskUsage on drill-down)
+	d.cacheMu.Lock()
+	d.volumeCache = vols
+	d.cacheMu.Unlock()
+
 	// Build volume name -> container names mapping
 	usageMap := make(map[string][]string)
 	containers, err := d.Cli.ContainerList(d.Ctx, dcontainer.ListOptions{All: true})
 	if err == nil {
+		// Cache container mount/network info for instant drill-down
+		infoMap := make(map[string]containerInfoCache, len(containers))
+
 		for _, c := range containers {
 			name := ""
 			if len(c.Names) > 0 {
@@ -237,12 +266,32 @@ func (d *DockerClient) ListVolumes() ([]common.Resource, error) {
 			if name == "" {
 				name = c.ID[:12]
 			}
+
+			info := containerInfoCache{NetIDs: make(map[string]bool)}
+
 			for _, m := range c.Mounts {
 				if m.Type == "volume" {
 					usageMap[m.Name] = append(usageMap[m.Name], name)
 				}
+				info.Mounts = append(info.Mounts, mountInfoCache{
+					Type:        string(m.Type),
+					Name:        m.Name,
+					Source:      m.Source,
+					Destination: m.Destination,
+				})
 			}
+			if c.NetworkSettings != nil {
+				for _, n := range c.NetworkSettings.Networks {
+					info.NetIDs[n.NetworkID] = true
+				}
+			}
+
+			infoMap[c.ID] = info
 		}
+
+		d.cacheMu.Lock()
+		d.containerInfoMap = infoMap
+		d.cacheMu.Unlock()
 	}
 
 	// Enrich volumes with usage info
@@ -259,7 +308,16 @@ func (d *DockerClient) ListVolumes() ([]common.Resource, error) {
 }
 
 func (d *DockerClient) ListNetworks() ([]common.Resource, error) {
-	return d.Network.List()
+	result, err := d.Network.List()
+	if err != nil {
+		return nil, err
+	}
+
+	d.cacheMu.Lock()
+	d.networkCache = result
+	d.cacheMu.Unlock()
+
+	return result, nil
 }
 
 func (d *DockerClient) ListServices() ([]common.Resource, error) {
@@ -477,34 +535,55 @@ func (d *DockerClient) ListTasksForService(serviceID string) ([]swarm.Task, erro
 }
 
 func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, error) {
-	// Inspect container to get mounts
-	json, err := d.Cli.ContainerInspect(d.Ctx, id)
-	if err != nil {
-		return nil, err
-	}
+	// 1. Get container mount info (cache first, API fallback)
+	d.cacheMu.RLock()
+	info, cached := d.containerInfoMap[id]
+	d.cacheMu.RUnlock()
 
-	// Collect volume names to fetch from Docker volume list
-	volumeNames := make(map[string]bool)
-	for _, m := range json.Mounts {
-		if m.Type == "volume" {
-			volumeNames[m.Name] = true
+	if !cached {
+		cj, err := d.Cli.ContainerInspect(d.Ctx, id)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// List all Docker volumes and index them by name
-	volumeIndex := make(map[string]volume.Volume)
-	all, err := d.Volume.List()
-	if err == nil {
-		for _, r := range all {
-			if v, ok := r.(volume.Volume); ok {
-				volumeIndex[v.Name] = v
+		info = containerInfoCache{NetIDs: make(map[string]bool)}
+		for _, m := range cj.Mounts {
+			info.Mounts = append(info.Mounts, mountInfoCache{
+				Type:        string(m.Type),
+				Name:        m.Name,
+				Source:      m.Source,
+				Destination: m.Destination,
+			})
+		}
+		if cj.NetworkSettings != nil {
+			for _, n := range cj.NetworkSettings.Networks {
+				info.NetIDs[n.NetworkID] = true
 			}
 		}
+		d.cacheMu.Lock()
+		d.containerInfoMap[id] = info
+		d.cacheMu.Unlock()
 	}
 
+	// 2. Get volume list (cache first, API fallback)
+	d.cacheMu.RLock()
+	cachedVols := d.volumeCache
+	d.cacheMu.RUnlock()
+
+	if cachedVols == nil {
+		cachedVols, _ = d.Volume.List()
+	}
+
+	volumeIndex := make(map[string]volume.Volume)
+	for _, r := range cachedVols {
+		if v, ok := r.(volume.Volume); ok {
+			volumeIndex[v.Name] = v
+		}
+	}
+
+	// 3. Match mounts to volumes
 	var result []common.Resource
-	for _, m := range json.Mounts {
-		mountType := strings.ToUpper(string(m.Type))
+	for _, m := range info.Mounts {
+		mountType := strings.ToUpper(m.Type)
 
 		switch m.Type {
 		case "volume":
@@ -516,7 +595,6 @@ func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, er
 				})
 			}
 		default:
-			// bind, tmpfs, npipe, etc.
 			result = append(result, volume.ContainerVolume{
 				Volume: volume.Volume{
 					Name:    m.Source,
@@ -536,31 +614,57 @@ func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, er
 }
 
 func (d *DockerClient) ListNetworksForContainer(id string) ([]common.Resource, error) {
-	// Inspect container to get networks
-	json, err := d.Cli.ContainerInspect(d.Ctx, id)
-	if err != nil {
-		return nil, err
+	// 1. Get container network info (cache first, API fallback)
+	d.cacheMu.RLock()
+	info, cached := d.containerInfoMap[id]
+	d.cacheMu.RUnlock()
+
+	if !cached {
+		cj, err := d.Cli.ContainerInspect(d.Ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		info = containerInfoCache{NetIDs: make(map[string]bool)}
+		if cj.NetworkSettings != nil {
+			for _, n := range cj.NetworkSettings.Networks {
+				info.NetIDs[n.NetworkID] = true
+			}
+		}
+		for _, m := range cj.Mounts {
+			info.Mounts = append(info.Mounts, mountInfoCache{
+				Type:        string(m.Type),
+				Name:        m.Name,
+				Source:      m.Source,
+				Destination: m.Destination,
+			})
+		}
+		d.cacheMu.Lock()
+		d.containerInfoMap[id] = info
+		d.cacheMu.Unlock()
 	}
-	
-	ids := make(map[string]bool)
-	for _, n := range json.NetworkSettings.Networks {
-		ids[n.NetworkID] = true
+
+	// 2. Get network list (cache first, API fallback)
+	d.cacheMu.RLock()
+	cachedNets := d.networkCache
+	d.cacheMu.RUnlock()
+
+	if cachedNets == nil {
+		var err error
+		cachedNets, err = d.Network.List()
+		if err != nil {
+			return nil, err
+		}
 	}
-	
-	// List all networks and filter
-	all, err := d.Network.List()
-	if err != nil {
-		return nil, err
-	}
-	
+
+	// 3. Filter networks by container membership
 	var filtered []common.Resource
-	for _, r := range all {
+	for _, r := range cachedNets {
 		if n, ok := r.(network.Network); ok {
-			if ids[n.ID] {
+			if info.NetIDs[n.ID] {
 				filtered = append(filtered, r)
 			}
 		}
 	}
-	
+
 	return filtered, nil
 }

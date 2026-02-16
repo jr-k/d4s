@@ -148,13 +148,13 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 				// Sort Ascending by Focused Column
 				v.SortCol = v.FocusCol
 				v.SortAsc = true
-				app.RefreshCurrentView()
+				v.Refilter()
 				return nil
 			case tcell.KeyDown:
 				// Sort Descending by Focused Column
 				v.SortCol = v.FocusCol
 				v.SortAsc = false
-				app.RefreshCurrentView()
+				v.Refilter()
 				return nil
 			case tcell.KeyRight:
 				// Move FocusCol Right
@@ -266,7 +266,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 			return nil
 		case '+': // Toggle Sort Order
 			v.SortAsc = !v.SortAsc
-			app.RefreshCurrentView()
+			v.Refilter()
 			return nil
 		case 'u': // Unselect All
 			v.SelectedIDs = make(map[string]bool)
