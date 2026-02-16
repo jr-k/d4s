@@ -243,7 +243,22 @@ func Shell(app common.AppController, id string) {
 			}
 		}()
 
+		// Remove global signal handlers (main.go's) and set up a local
+		// handler that swallows signals during the shell session.
+		// We use Notify (not Ignore) so the OS-level disposition stays
+		// "handled" rather than SIG_IGN — child processes inherit SIG_DFL
+		// and Docker can set up its own signal forwarding to the container.
 		signal.Reset(os.Interrupt, syscall.SIGTERM)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		defer func() {
+			signal.Stop(sigChan)
+			close(sigChan)
+		}()
+		go func() {
+			for range sigChan {
+			}
+		}()
 
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Mounting volume %s in temporary alpine container...\n", id)

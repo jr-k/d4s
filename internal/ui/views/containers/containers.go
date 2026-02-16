@@ -363,6 +363,16 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		}()
 
 		signal.Reset(os.Interrupt, syscall.SIGTERM)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		defer func() {
+			signal.Stop(sigChan)
+			close(sigChan)
+		}()
+		go func() {
+			for range sigChan {
+			}
+		}()
 
 		fmt.Print("\033[H\033[2J")
 		fmt.Printf("Detecting shell for %s...\n", id)
