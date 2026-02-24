@@ -12,13 +12,21 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 <a target="_blank" href="https://github.com/jr-k/d4s/pkgs/container/d4s"><img src="https://img.shields.io/badge/ghcr.io-d4s-orange?logo=github&color=orange" /></a>
 
 ## Screenshots
-<div align="left" width="100%">
-    <img src="./docs/img/screen1.png" width="100%" alt="" />
-</div>
-<br />
-<div align="left" width="100%">
-    <img src="./docs/img/screen2.png" width="100%" alt="" />
-</div>
+
+<table>
+  <tr>
+    <td><img src="./docs/img/screen1.png" width="100%" /></td>
+    <td><img src="./docs/img/screen2.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/img/screen3.png" width="100%" /></td>
+    <td><img src="./docs/img/screen4.png" width="100%" /></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/img/screen5.png" width="100%" /></td>
+    <td><img src="./docs/img/screen6.png" width="100%" /></td>
+  </tr>
+</table>
 
 ## Features
 
