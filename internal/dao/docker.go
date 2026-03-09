@@ -15,6 +15,7 @@ import (
 
 	"github.com/docker/cli/cli/config"
 	clicontext "github.com/docker/cli/cli/context"
+	"github.com/docker/cli/cli/connhelper"
 	"github.com/docker/cli/cli/context/docker"
 	"github.com/docker/cli/cli/context/store"
 	dcontainer "github.com/docker/docker/api/types/container"
@@ -197,6 +198,25 @@ func loadSpecificContext(targetCtx string, logger *log.Logger, baseOpts []client
 	}
 
 	logger.Printf("Using Host: %s", ep.Host)
+	helper, err := connhelper.GetConnectionHelper(ep.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	if helper != nil {
+		opts := append(baseOpts,
+			client.WithHTTPClient(&http.Client{
+				Transport: &http.Transport{
+					DialContext: helper.Dialer,
+				},
+			}),
+			client.WithHost(helper.Host),
+			client.WithDialContext(helper.Dialer),
+			client.WithTimeout(apiTimeout),
+		)
+		return opts, nil
+	}
+
 	opts := append(baseOpts, client.WithHost(ep.Host))
 
 	if ep.TLSData != nil {
@@ -210,7 +230,7 @@ func loadSpecificContext(targetCtx string, logger *log.Logger, baseOpts []client
 		opts = append(opts, client.WithHTTPClient(httpClient))
 	}
 
-	return opts, nil
+	return append(opts, client.WithTimeout(apiTimeout)), nil
 }
 
 func newTLSClient(tlsData *clicontext.TLSData, skipVerify bool, timeout time.Duration) (*http.Client, error) {
