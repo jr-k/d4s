@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -88,4 +89,12 @@ func FormatSCHeaderGlobal(key, action string) string {
 // Helper for footer shortcuts (legacy/logs)
 func FormatSC(key, action string) string {
 	return fmt.Sprintf("[%s::b]<%s>[%s:-] [%s]%s[-] ", styles.TagSCKey, key, styles.TagFg, styles.TagDim, action)
+}
+
+func DockerCommand(app AppController, args ...string) *exec.Cmd {
+	cmdArgs := append([]string{}, args...)
+	if docker := app.GetDocker(); docker != nil && docker.ContextName != "" && docker.ContextName != "default" {
+		cmdArgs = append([]string{"--context", docker.ContextName}, cmdArgs...)
+	}
+	return exec.Command("docker", cmdArgs...)
 }

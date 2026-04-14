@@ -371,9 +371,9 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		for _, shell := range shells {
 			var checkCmd *exec.Cmd
 			if asRoot {
-				checkCmd = exec.Command("docker", "exec", "-u", "root", id, shell, "-c", "exit 0")
+				checkCmd = common.DockerCommand(app, "exec", "-u", "root", id, shell, "-c", "exit 0")
 			} else {
-				checkCmd = exec.Command("docker", "exec", id, shell, "-c", "exit 0")
+				checkCmd = common.DockerCommand(app, "exec", id, shell, "-c", "exit 0")
 			}
 			if err := checkCmd.Run(); err == nil {
 				selectedShell = shell
@@ -396,9 +396,9 @@ func Shell(app common.AppController, id string, asRoot bool) {
 
 		var cmd *exec.Cmd
 		if asRoot {
-			cmd = exec.Command("docker", "exec", "-u", "root", "-it", id, selectedShell)
+			cmd = common.DockerCommand(app, "exec", "-u", "root", "-it", id, selectedShell)
 		} else {
-			cmd = exec.Command("docker", "exec", "-it", id, selectedShell)
+			cmd = common.DockerCommand(app, "exec", "-it", id, selectedShell)
 		}
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
