@@ -26,18 +26,18 @@ type LogInspector struct {
 	ResourceID   string
 	Subject      string
 	ResourceType string
-	
+
 	// Settings
-	AutoScroll   bool
-	Timestamps   bool
-	Wrap         bool // Restored
-	filter       string
-	since        string
-	tail         string 
-	sinceLabel   string
-	
+	AutoScroll bool
+	Timestamps bool
+	Wrap       bool // Restored
+	filter     string
+	since      string
+	tail       string
+	sinceLabel string
+
 	// Control
-	cancelFunc   context.CancelFunc
+	cancelFunc context.CancelFunc
 }
 
 // Ensure implementation
@@ -102,7 +102,7 @@ func (i *LogInspector) GetStatus() string {
 	parts = append(parts, fmtStatus("[::b]Timestamps[::-]", i.Timestamps))
 	parts = append(parts, fmtStatus("[::b]Wrap[::-]", i.Wrap))
 	parts = append(parts, fmt.Sprintf("[%s::b]Since:[-::-][%s]%s[-]", styles.TagSCKey, styles.TagFg, i.sinceLabel))
-	
+
 	return strings.Join(parts, "     ")
 }
 
@@ -129,7 +129,7 @@ func (i *LogInspector) GetShortcuts() []string {
 	if paddingNeeded == maxPerCol {
 		paddingNeeded = 0
 	}
-	
+
 	for j := 0; j < paddingNeeded; j++ {
 		altShortcuts = append(altShortcuts, "")
 	}
@@ -145,7 +145,7 @@ func (i *LogInspector) GetShortcuts() []string {
 
 func (i *LogInspector) OnMount(app common.AppController) {
 	i.App = app
-	
+
 	i.HeaderView = tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
@@ -159,7 +159,7 @@ func (i *LogInspector) OnMount(app common.AppController) {
 		SetWordWrap(i.Wrap). // Only affects word boundary, not line wrapping per se if SetWrap matches
 		SetWrap(i.Wrap).     // CRITICAL: SetWrap(false) allows horizontal scrolling
 		SetTextColor(styles.ColorIdle)
-	
+
 	i.TextView.SetChangedFunc(func() {
 		if i.AutoScroll {
 			i.TextView.ScrollToEnd()
@@ -178,7 +178,7 @@ func (i *LogInspector) OnMount(app common.AppController) {
 		SetBorderColor(styles.ColorIdle).
 		SetBackgroundColor(styles.ColorBlack).
 		SetBorderPadding(0, 0, 0, 0)
-		
+
 	i.startStreaming()
 }
 
@@ -199,12 +199,17 @@ func (i *LogInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 		i.App.CloseInspector()
 		return nil
 	}
-	
+
+	if event.Rune() == ':' {
+		i.App.ActivateCmd(":")
+		return nil
+	}
+
 	if event.Rune() == '/' {
 		i.App.ActivateCmd("/")
 		return nil
 	}
-	
+
 	switch event.Rune() {
 	case 's':
 		i.AutoScroll = !i.AutoScroll
@@ -244,7 +249,7 @@ func (i *LogInspector) InputHandler(event *tcell.EventKey) *tcell.EventKey {
 	case '6':
 		i.setSince("1h")
 	}
-	
+
 	return event
 }
 
@@ -267,7 +272,7 @@ func (i *LogInspector) setSince(mode string) {
 		i.sinceLabel = "Tail"
 		i.AutoScroll = true
 	} else if mode == "head" {
-		i.since = "" 
+		i.since = ""
 		i.tail = "all"
 		i.sinceLabel = "Head"
 		i.AutoScroll = false
@@ -307,15 +312,15 @@ func (i *LogInspector) startStreaming() {
 
 	// Channels for buffering
 	logCh := make(chan string, 1000)
-	
+
 	go func() {
 		defer close(logCh)
-		
+
 		var reader io.ReadCloser
 		var err error
-		
+
 		docker := i.App.GetDocker()
-		
+
 		if i.ResourceType == "service" {
 			reader, err = docker.GetServiceLogs(i.ResourceID, i.since, i.tail, i.Timestamps)
 			if err == nil {
@@ -353,7 +358,7 @@ func (i *LogInspector) startStreaming() {
 		// Increase buffer size to handle large lines
 		buf := make([]byte, 0, 64*1024)
 		scanner.Buffer(buf, 5*1024*1024) // 5MB limit
-		
+
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
@@ -363,7 +368,7 @@ func (i *LogInspector) startStreaming() {
 				logCh <- line
 			}
 		}
-		
+
 		if err := scanner.Err(); err != nil && err != context.Canceled && err != io.EOF {
 			logCh <- fmt.Sprintf("[%s]Stream Error: %v", styles.TagError, err)
 		}
@@ -409,14 +414,14 @@ func (i *LogInspector) startStreaming() {
 				if i.TextView == nil {
 					return
 				}
-				
+
 				if firstWrite {
 					i.TextView.Clear()
 				}
-				
+
 				// Calculate starting row
 				text := strings.Join(buffer, "\n") + "\n"
-				
+
 				// Apply color - ColorIdle is Blueish
 				fmt.Fprint(i.TextView, text)
 
@@ -428,7 +433,7 @@ func (i *LogInspector) startStreaming() {
 				} else if i.AutoScroll {
 					i.TextView.ScrollToEnd()
 				}
-				
+
 				buffer = buffer[:0] // Clear buffer but keep capacity
 			})
 		}
@@ -442,7 +447,7 @@ func (i *LogInspector) startStreaming() {
 				}
 
 				line = tview.TranslateANSI(tview.Escape(line))
-				
+
 				// Filter logic (supports negation with ^)
 				if i.filter != "" {
 					filterTerm := i.filter
@@ -470,35 +475,35 @@ func (i *LogInspector) startStreaming() {
 						}
 					}
 				}
-				
+
 				if i.ResourceType == "compose" {
 					// Compose Logs: "ContainerPrefix | LogPayload"
 					parts := strings.SplitN(line, "|", 2)
 					if len(parts) == 2 {
 						prefix := parts[0]
 						body := parts[1]
-						
+
 						// Determine unique color for this container prefix
 						key := strings.TrimSpace(prefix)
-						
+
 						col, exists := colorMap[key]
 						if !exists {
 							col = nextColor()
 							colorMap[key] = col
 						}
-						
+
 						// Handle timestamp which appears inside the body for compose logs
 						if i.Timestamps {
 							// Body usually starts with a space -> " 2023... msg"
 							trimmed := strings.TrimLeft(body, " ")
 							indent := body[:len(body)-len(trimmed)]
-							
+
 							tParts := strings.SplitN(trimmed, " ", 2)
 							if len(tParts) == 2 {
 								body = fmt.Sprintf("%s[%s]%s[-] %s", indent, styles.TagDim, tParts[0], tParts[1])
 							}
 						}
-						
+
 						// Color the prefix, reset, keep pipe, print body
 						line = fmt.Sprintf("[%s]%s[-]|%s", col, prefix, body)
 					} else {
@@ -512,7 +517,7 @@ func (i *LogInspector) startStreaming() {
 					if i.Timestamps {
 						parts := strings.SplitN(line, " ", 2)
 						if len(parts) == 2 {
-							// Check if first part looks like a timestamp? 
+							// Check if first part looks like a timestamp?
 							// Just blind replace for perf
 							line = fmt.Sprintf("[%s]%s[-] %s", styles.TagDim, parts[0], parts[1])
 						}
@@ -520,14 +525,14 @@ func (i *LogInspector) startStreaming() {
 
 					line = " [" + styles.TagIdle + "]" + line + " "
 				}
-				
+
 				buffer = append(buffer, line)
-				
+
 				// Optional: if buffer gets too big, flush immediately to avoid lag
 				if len(buffer) >= 1000 {
 					flush()
 				}
-				
+
 			case <-ticker.C:
 				flush()
 

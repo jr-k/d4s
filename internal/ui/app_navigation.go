@@ -41,6 +41,12 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleAliases)
 	case "x", "sec", "secret", "secrets":
 		switchToRoot(styles.TitleSecrets)
+	case "ctx", "context", "contexts":
+		a.SafeQueueUpdateDraw(func() {
+			a.ShowContextPicker()
+		})
+	case "ld", "logdump":
+		a.DumpActiveContainerLogs()
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:
@@ -60,20 +66,20 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 	if v, ok := a.Views[viewName]; ok {
 		// Record previous view
 		current, _ := a.Pages.GetFrontPage()
-		
+
 		// Avoid stacking the same view as previous repeatedly
 		if current != "" && current != viewName && current != "inspect" {
 			// Only stack if it's a drill-down (new scope) or a distinct view switch
-			
+
 			// Simple deduplication for PreviousView
 			if a.PreviousView != current {
 				a.PreviousView = current
 			}
 		}
-		
+
 		// Always update CurrentView
 		a.CurrentView = viewName
-		
+
 		// Flush/Clear manual selection on view switch
 		v.SelectedIDs = make(map[string]bool)
 
@@ -84,7 +90,7 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 		}
 
 		a.Pages.SwitchToPage(viewName)
-		
+
 		if reset {
 			a.ActiveFilter = ""
 			// Clear the view's filter as well since we are resetting
@@ -113,7 +119,7 @@ func (a *App) SwitchToWithSelection(viewName string, reset bool) {
 		}
 		// Same scope with existing data: keep it visible (preload benefit)
 
-		// Don't spawn a goroutine here! 
+		// Don't spawn a goroutine here!
 		// RefreshCurrentView accesses UI state (ActiveScope, FrontPage) and calls UpdateShortcuts (UI).
 		// It internally spawns a background task for the heavy lifting.
 		// Running it in 'go' causes race conditions with UI drawing.

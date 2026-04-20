@@ -44,7 +44,7 @@ type App struct {
 	Pages   *tview.Pages
 	CmdLine *command.CommandComponent
 	Flash   *footer.FlashComponent
-	Help tview.Primitive
+	Help    tview.Primitive
 
 	// Views
 	Views map[string]*view.ResourceView
@@ -56,16 +56,16 @@ type App struct {
 	ActiveInspector common.Inspector
 	PreviousView    string
 	CurrentView     string // Track current view name before inspector
-	LatestVersion   string 
+	LatestVersion   string
 
 	// Concurrency
 	pauseMx    sync.RWMutex
 	paused     bool
 	stopTicker chan struct{}
-	
-	flashMx    sync.Mutex
+
+	flashMx     sync.Mutex
 	flashExpiry time.Time
-	
+
 	appendTimer *time.Timer
 	appendMx    sync.Mutex
 }
@@ -105,7 +105,7 @@ func NewApp(contextName string, cfg *config.Config) (*App, error) {
 		styles.InvertColors()
 	}
 
-	docker, err := dao.NewDockerClient(contextName, cfg.D4S.GetAPIServerTimeout())
+	docker, err := dao.NewDockerClient(contextName, cfg.D4S.GetAPIServerTimeout(), cfg.D4S.DefaultContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init docker client: %w", err)
 	}
@@ -114,7 +114,7 @@ func NewApp(contextName string, cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create screen: %w", err)
 	}
-	
+
 	tviewApp := tview.NewApplication()
 	tviewApp.SetScreen(screen)
 
@@ -146,7 +146,7 @@ func (a *App) Run() error {
 
 	// Start auto-refresh
 	a.StartAutoRefresh()
-	
+
 	// Check for updates (unless skipped by config)
 	if !a.Cfg.D4S.SkipLatestRevCheck {
 		go a.checkLatestVersion()
@@ -180,12 +180,12 @@ func (a *App) StartAutoRefresh() {
 		// We use a small delay on first run to let UI settle if needed, but only for the first ever run
 		// subsequent restarts of auto-refresh might want immediate effect or wait for next tick.
 		// Let's rely on tick.
-		
+
 		ticker := time.NewTicker(a.Cfg.D4S.GetRefreshInterval())
 		defer ticker.Stop()
 
 		// Immediate update on start
-		// a.RefreshCurrentView() calls a.UpdateShortcuts() which calls tview methods. 
+		// a.RefreshCurrentView() calls a.UpdateShortcuts() which calls tview methods.
 		// Since we are in a goroutine here, we MUST queue.
 		a.SafeQueueUpdateDraw(func() {
 			// Actually RefreshCurrentView spawns BG task, so we shouldn't wrap the whole thing?
@@ -245,9 +245,9 @@ func (a *App) initUI() {
 	vImages.RemoveFunc = images.Remove
 	vImages.PruneFunc = images.Prune
 	vImages.Headers = images.Headers
-	
+
 	// Default Sort: Containers (Index 3) DESC
-	vImages.SortCol = 3 
+	vImages.SortCol = 3
 	vImages.SortAsc = false
 
 	vImages.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
@@ -361,7 +361,7 @@ func (a *App) initUI() {
 		a.Layout.AddItem(a.Header.View, 7, 1, false)
 	}
 	a.Layout.AddItem(a.CmdLine.View, 0, 0, false). // Hidden by default (size 0, proportion 0)
-		AddItem(a.Pages, 0, 1, true)
+							AddItem(a.Pages, 0, 1, true)
 
 	if !a.Cfg.D4S.UI.Crumbsless {
 		a.Layout.AddItem(a.Flash.View, 2, 1, false)
@@ -369,7 +369,7 @@ func (a *App) initUI() {
 
 	// Global Shortcuts
 	a.TviewApp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		
+
 		// Priority 0: Global Exit on Ctrl+C (unless noExitOnCtrlC is set)
 		if event.Key() == tcell.KeyCtrlC {
 			if !a.Cfg.D4S.NoExitOnCtrlC {
@@ -411,9 +411,9 @@ func (a *App) initUI() {
 			if scope != nil {
 				origin := scope.OriginView
 				parent := scope.Parent
-				
+
 				a.SafeSetScope(parent) // Pop breadcrumb
-				
+
 				// Navigate back: either to parent's active view (if we can infer it?)
 				// Or use OriginView. OriginView is the view we were in when we drilled down.
 				// This matches "Back" behavior perfectly.
@@ -448,7 +448,7 @@ func (a *App) initUI() {
 			} else {
 				// Go to aliases
 				// We use SwitchToWithSelection to populate PreviousView and handle focus
-				a.SwitchToWithSelection(styles.TitleAliases, false) 
+				a.SwitchToWithSelection(styles.TitleAliases, false)
 			}
 			return nil
 		}
@@ -552,7 +552,7 @@ func (a *App) SetActiveScope(scope *common.Scope) {
 	// If different from current, stack it
 	if a.ActiveScope != nil {
 		// Only stack if it's a new drill-down (different value or type)
-		// Prevent stacking identical scopes if called repeatedly? 
+		// Prevent stacking identical scopes if called repeatedly?
 		// Actually typical usage is creating a NEW struct instance, so we check content.
 		if a.ActiveScope.Value != scope.Value || a.ActiveScope.Type != scope.Type {
 			scope.Parent = a.ActiveScope
@@ -646,7 +646,7 @@ func (a *App) OpenInspector(inspector common.Inspector) {
 	a.Pages.AddPage("inspect", inspector.GetPrimitive(), true, true)
 	a.TviewApp.SetFocus(inspector.GetPrimitive())
 	a.UpdateShortcuts()
-	
+
 	// Force immediate update of breadcrumb/UI
 	a.RefreshCurrentView()
 }
@@ -663,7 +663,7 @@ func (a *App) CloseInspector() {
 
 	a.RestoreFocus()
 	a.UpdateShortcuts()
-	
+
 	// Force immediate update of breadcrumb/UI
 	a.RefreshCurrentView()
 }
@@ -688,7 +688,6 @@ func (a *App) IsPaused() bool {
 	defer a.pauseMx.RUnlock()
 	return a.paused
 }
-
 
 func (a *App) SetFlashText(text string) {
 	a.flashMx.Lock()
@@ -717,7 +716,7 @@ func (a *App) AppendFlash(text string) {
 	})
 }
 
-func  (a *App) AppendFlashError(text string) {
+func (a *App) AppendFlashError(text string) {
 	a.AppendFlash(fmt.Sprintf("[black:red] <error: %s> [-:-]", text))
 }
 
@@ -733,7 +732,7 @@ func (a *App) SetFlashMessage(text string, duration time.Duration) {
 	a.flashMx.Lock()
 	a.flashExpiry = time.Now().Add(duration)
 	a.flashMx.Unlock()
-	
+
 	a.Flash.SetText(text)
 }
 
@@ -764,7 +763,7 @@ func (a *App) SafeQueueUpdateDraw(f func()) {
 		return
 	}
 
-	// ALWAYS run QueueUpdateDraw in a goroutine to avoid deadlocks if called from within a callback 
+	// ALWAYS run QueueUpdateDraw in a goroutine to avoid deadlocks if called from within a callback
 	// that holds internal tview locks (though QueueUpdateDraw is supposed to be safe, sometimes it blocks).
 	// Actually, QueueUpdateDraw puts it in a channel.
 	go a.TviewApp.QueueUpdateDraw(func() {

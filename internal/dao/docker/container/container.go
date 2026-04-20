@@ -28,7 +28,7 @@ type CachedStats struct {
 type Manager struct {
 	cli *client.Client
 	ctx context.Context
-	
+
 	statsCache map[string]CachedStats
 	statsMutex sync.RWMutex
 	updating   int32
@@ -36,8 +36,8 @@ type Manager struct {
 
 func NewManager(cli *client.Client, ctx context.Context) *Manager {
 	return &Manager{
-		cli: cli, 
-		ctx: ctx,
+		cli:        cli,
+		ctx:        ctx,
 		statsCache: make(map[string]CachedStats),
 	}
 }
@@ -146,11 +146,11 @@ func (m *Manager) updateStats(containers []types.Container) {
 	if !atomic.CompareAndSwapInt32(&m.updating, 0, 1) {
 		return
 	}
-	
+
 	// Create a detached operation, do not block caller
 	go func() {
 		defer atomic.StoreInt32(&m.updating, 0)
-		
+
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, 5) // Limit concurrency
 
@@ -169,9 +169,9 @@ func (m *Manager) updateStats(containers []types.Container) {
 				if err != nil {
 					return
 				}
-				
+
 				cpuPct, mem, _ := common.CalculateContainerStats(statsResp.Body)
-				
+
 				colorTag := ""
 				if cpuPct >= 90.0 {
 					colorTag = fmt.Sprintf("[%s::b]", styles.TagError)
@@ -211,7 +211,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		if len(c.Names) > 0 {
 			name = strings.TrimPrefix(c.Names[0], "/")
 		}
-		
+
 		seen := make(map[string]bool)
 		portList := make([]string, 0, len(c.Ports))
 		for _, p := range c.Ports {
@@ -230,7 +230,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		} else if proj, ok := c.Labels["com.docker.compose.project"]; ok {
 			compose = "📦 " + proj
 		}
-		
+
 		projectName := c.Labels["com.docker.compose.project"]
 		serviceName := c.Labels["com.docker.swarm.service.name"]
 
@@ -239,7 +239,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		// Fetch Stats from Cache
 		cpuStr := "-"
 		memStr := "-"
-		
+
 		if c.State != "running" {
 			cpuStr = "-"
 			memStr = "-"
@@ -343,6 +343,16 @@ func (m *Manager) Logs(id string, since string, tail string, timestamps bool) (i
 		opts.Tail = "all"
 	}
 	return m.cli.ContainerLogs(m.ctx, id, opts)
+}
+
+func (m *Manager) LogsSnapshot(id string, timestamps bool) (io.ReadCloser, error) {
+	return m.cli.ContainerLogs(m.ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Tail:       "all",
+		Timestamps: timestamps,
+	})
 }
 
 func (m *Manager) GetEnv(id string) ([]string, error) {
