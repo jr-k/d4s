@@ -14,10 +14,9 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/config"
-	clicontext "github.com/docker/cli/cli/context"
 	"github.com/docker/cli/cli/connhelper"
+	clicontext "github.com/docker/cli/cli/context"
 	"github.com/docker/cli/cli/context/docker"
-	"github.com/docker/cli/cli/context/store"
 	dcontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -58,10 +57,10 @@ type mountInfoCache struct {
 }
 
 type DockerClient struct {
-	Cli *client.Client
-	Ctx context.Context
+	Cli         *client.Client
+	Ctx         context.Context
 	ContextName string
-	
+
 	// Managers
 	Container *container.Manager
 	Image     *image.Manager
@@ -73,22 +72,22 @@ type DockerClient struct {
 	Compose   *compose.Manager
 
 	// Resource cache for fast scoped queries and stale-while-revalidate
-	cacheMu              sync.RWMutex
-	volumeCache          []common.Resource            // Raw Volume.List() results (for scoped queries)
-	enrichedVolumeCache  []common.Resource            // Full ListVolumes() result (with UsedBy)
-	networkCache         []common.Resource            // Network.List() results
-	containerInfoMap     map[string]containerInfoCache // containerID -> mount/network info
+	cacheMu             sync.RWMutex
+	volumeCache         []common.Resource             // Raw Volume.List() results (for scoped queries)
+	enrichedVolumeCache []common.Resource             // Full ListVolumes() result (with UsedBy)
+	networkCache        []common.Resource             // Network.List() results
+	containerInfoMap    map[string]containerInfoCache // containerID -> mount/network info
 
 	// Guard against concurrent async refreshes
 	refreshMu  sync.Mutex
 	refreshing map[string]bool
 }
 
-func NewDockerClient(contextName string, apiTimeout time.Duration) (*DockerClient, error) {
+func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContext string) (*DockerClient, error) {
 	logger, cleanup := initLogger()
 	defer cleanup()
 
-	ctxName, opts, err := resolveClientOpts(contextName, logger, apiTimeout)
+	ctxName, opts, err := resolveClientOpts(contextName, defaultContext, logger, apiTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +97,7 @@ func NewDockerClient(contextName string, apiTimeout time.Duration) (*DockerClien
 		return nil, err
 	}
 	ctx := context.Background()
-	
+
 	return &DockerClient{
 		Cli:              cli,
 		Ctx:              ctx,
@@ -124,13 +123,20 @@ func initLogger() (*log.Logger, func()) {
 	return log.New(f, "d4s-dao: ", log.LstdFlags), func() { f.Close() }
 }
 
-func resolveClientOpts(flagContext string, logger *log.Logger, apiTimeout time.Duration) (string, []client.Opt, error) {
+func resolveClientOpts(flagContext string, defaultContext string, logger *log.Logger, apiTimeout time.Duration) (string, []client.Opt, error) {
 	opts := []client.Opt{
 		client.WithAPIVersionNegotiation(),
 	}
+	flagContext = strings.TrimSpace(flagContext)
+	defaultContext = strings.TrimSpace(defaultContext)
 
 	// 1. Flag takes precedence
 	if flagContext != "" {
+		if flagContext == "default" {
+			logger.Println("Explicit default context requested via flag, using FromEnv")
+			opts = append(opts, client.FromEnv)
+			return "default", opts, nil
+		}
 		logger.Printf("Explicit context requested via flag: %s", flagContext)
 		opts, err := loadSpecificContext(flagContext, logger, opts, apiTimeout)
 		return flagContext, opts, err
@@ -143,18 +149,39 @@ func resolveClientOpts(flagContext string, logger *log.Logger, apiTimeout time.D
 		return "env", opts, nil
 	}
 
-	// 3. Identify Target Context
-	targetCtx := "default"
-	if envCtx := os.Getenv("DOCKER_CONTEXT"); envCtx != "" {
-		targetCtx = envCtx
-		logger.Printf("DOCKER_CONTEXT set to %s", targetCtx)
-	} else {
-		if cfg, err := config.Load(config.Dir()); err == nil && cfg.CurrentContext != "" {
-			targetCtx = cfg.CurrentContext
-			logger.Printf("Loaded CurrentContext from config: %s", targetCtx)
-		} else if err != nil {
-			logger.Printf("Failed to load config: %v", err)
+	// 3. DOCKER_CONTEXT takes precedence over d4s config
+	if envCtx := strings.TrimSpace(os.Getenv("DOCKER_CONTEXT")); envCtx != "" {
+		logger.Printf("DOCKER_CONTEXT set to %s", envCtx)
+		if envCtx == "default" {
+			opts = append(opts, client.FromEnv)
+			return "default", opts, nil
 		}
+		opts, err := loadSpecificContext(envCtx, logger, opts, apiTimeout)
+		return envCtx, opts, err
+	}
+
+	// 4. d4s config default context, if provided
+	if defaultContext != "" {
+		if defaultContext == "default" {
+			logger.Println("Using d4s default context: default")
+			opts = append(opts, client.FromEnv)
+			return "default", opts, nil
+		}
+		logger.Printf("Using d4s default context: %s", defaultContext)
+		opts, err := loadSpecificContext(defaultContext, logger, opts, apiTimeout)
+		if err == nil {
+			return defaultContext, opts, nil
+		}
+		logger.Printf("Failed to load d4s default context %s: %v", defaultContext, err)
+	}
+
+	// 5. Identify Target Context
+	targetCtx := "default"
+	if cfg, err := config.Load(config.Dir()); err == nil && cfg.CurrentContext != "" {
+		targetCtx = cfg.CurrentContext
+		logger.Printf("Loaded CurrentContext from config: %s", targetCtx)
+	} else if err != nil {
+		logger.Printf("Failed to load config: %v", err)
 	}
 
 	if targetCtx == "default" {
@@ -163,21 +190,15 @@ func resolveClientOpts(flagContext string, logger *log.Logger, apiTimeout time.D
 		return "default", opts, nil
 	}
 
-	// 4. Load Specific Context
+	// 6. Load Specific Context
 	opts, err := loadSpecificContext(targetCtx, logger, opts, apiTimeout)
 	return targetCtx, opts, err
 }
 
 func loadSpecificContext(targetCtx string, logger *log.Logger, baseOpts []client.Opt, apiTimeout time.Duration) ([]client.Opt, error) {
 	logger.Printf("Loading context: %s", targetCtx)
-	
-	// Create store with docker endpoint registered
-	s := store.New(config.ContextStoreDir(), store.NewConfig(
-		func() interface{} {
-			return &map[string]interface{}{}
-		},
-		store.EndpointTypeGetter(docker.DockerEndpoint, func() interface{} { return &docker.EndpointMeta{} }),
-	))
+
+	s := newContextStore()
 
 	meta, err := s.GetMetadata(targetCtx)
 	if err != nil {
@@ -594,7 +615,6 @@ func (d *DockerClient) GetServiceNetworks(id string) ([]swarm.NetworkAttachmentC
 func (d *DockerClient) SetServiceNetworks(id string, networks []swarm.NetworkAttachmentConfig) error {
 	return d.Service.SetNetworks(id, networks)
 }
-
 
 func (d *DockerClient) ListServicesForSecret(secretID string) ([]common.Resource, error) {
 	services, err := d.Service.List()

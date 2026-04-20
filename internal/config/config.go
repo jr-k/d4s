@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,11 +15,12 @@ type Config struct {
 }
 
 type D4SConfig struct {
-	RefreshRate         float64 `yaml:"refreshRate"`
-	APIServerTimeout    string `yaml:"apiServerTimeout"`
-	ReadOnly            bool   `yaml:"readOnly"`
-	DefaultView         string `yaml:"defaultView"`
-	NoExitOnCtrlC       bool   `yaml:"noExitOnCtrlC"`
+	RefreshRate      float64 `yaml:"refreshRate"`
+	APIServerTimeout string  `yaml:"apiServerTimeout"`
+	ReadOnly         bool    `yaml:"readOnly"`
+	DefaultContext   string  `yaml:"defaultContext"`
+	DefaultView      string  `yaml:"defaultView"`
+	NoExitOnCtrlC    bool    `yaml:"noExitOnCtrlC"`
 
 	UI UIConfig `yaml:"ui"`
 
@@ -112,6 +114,7 @@ func DefaultConfig() *Config {
 			RefreshRate:      2.0,
 			APIServerTimeout: "120s",
 			ReadOnly:         false,
+			DefaultContext:   "",
 			DefaultView:      "",
 			NoExitOnCtrlC:    false,
 			UI: UIConfig{
@@ -193,4 +196,26 @@ func Load() *Config {
 	}
 
 	return parsed
+}
+
+// Save writes the config back to $XDG_CONFIG_HOME/d4s/config.yaml.
+func Save(cfg *Config) error {
+	if cfg == nil {
+		return errors.New("nil config")
+	}
+
+	dir := configDir()
+	if dir == "" {
+		return errors.New("unable to determine config directory")
+	}
+
+	ensureConfigDirs()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(dir, "config.yaml")
+	return os.WriteFile(configPath, data, 0o644)
 }

@@ -46,28 +46,28 @@ func (a *AutocompleteInputField) SetApplication(app *tview.Application) {
 func (a *AutocompleteInputField) Draw(screen tcell.Screen) {
 	// Draw the base InputField first
 	a.InputField.Draw(screen)
-	
+
 	// Then draw the suggestion in gray if it exists and we have focus
 	if a.suggestionText != "" && a.HasFocus() {
 		x, y, width, _ := a.GetInnerRect()
 		text := a.GetText()
 		label := a.GetLabel()
-		
+
 		// Calculate the position where the suggestion should appear
 		// We use simple length calculation for stability
 		labelStr := stripColorTags(label)
 		labelWidth := len(labelStr)
 		textWidth := len(text)
-		
+
 		// Position after the text
 		suggestionX := x + labelWidth + textWidth
 		suggestionY := y
-		
+
 		// Only draw if we are within bounds and there is space
 		if suggestionX < x+width {
 			currentX := suggestionX
 			style := tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorBg)
-			
+
 			for _, r := range a.suggestionText {
 				if currentX >= x+width {
 					break
@@ -92,13 +92,13 @@ func NewCommandComponent(app common.AppController) *CommandComponent {
 		SetLabelColor(styles.ColorWhite).
 		SetFieldTextColor(styles.ColorFg).
 		SetLabel(fmt.Sprintf("[%s::b]VIEW> [-:%s:-]", styles.TagAccentLight, styles.TagBg))
-	
+
 	c.SetBorder(true).
 		SetBorderColor(styles.ColorAccentLight).
 		SetBackgroundColor(styles.ColorBg)
-	
+
 	c.SetApplication(app.GetTviewApp())
-	
+
 	comp := &CommandComponent{View: c, App: app}
 	comp.setupHandlers()
 	return comp
@@ -114,6 +114,9 @@ var availableCommands = []string{
 	"services",
 	"nodes",
 	"compose",
+	"context",
+	"contexts",
+	"ctx",
 	"help",
 	"aliases",
 	"q",
@@ -125,6 +128,7 @@ var availableCommands = []string{
 	"no",
 	"p",
 	"a",
+	"ctx",
 }
 
 // findBestSuggestion finds the best matching command for autocompletion
@@ -132,10 +136,10 @@ func findBestSuggestion(input string) string {
 	if input == "" {
 		return ""
 	}
-	
+
 	input = strings.ToLower(input)
 	bestMatch := ""
-	
+
 	for _, cmd := range availableCommands {
 		if strings.HasPrefix(cmd, input) && len(cmd) > len(input) {
 			if bestMatch == "" || len(cmd) < len(bestMatch) {
@@ -143,19 +147,19 @@ func findBestSuggestion(input string) string {
 			}
 		}
 	}
-	
+
 	// Robust check
 	if bestMatch != "" && len(input) < len(bestMatch) {
 		return bestMatch[len(input):] // Return only the suffix
 	}
-	
+
 	return ""
 }
 
 func (c *CommandComponent) updateSuggestion() {
 	text := c.View.GetText()
 	c.currentText = text
-	
+
 	// Only show suggestion in CMD mode (starts with :)
 	if strings.HasPrefix(text, ":") {
 		cmd := strings.TrimPrefix(text, ":")
@@ -183,25 +187,25 @@ func (c *CommandComponent) setupHandlers() {
 		if event.Key() == tcell.KeyEsc {
 			c.Reset()
 			c.App.SetActiveFilter("")
-			
+
 			c.App.RefreshCurrentView()
 			c.App.SetFlashText("")
-			
+
 			// Restore focus and hide cmdline
 			c.App.SetCmdLineVisible(false)
 			c.App.RestoreFocus()
 			return nil
 		}
-		
+
 		// Handle Tab to accept suggestion
 		if event.Key() == tcell.KeyTab {
 			c.acceptSuggestion()
 			return nil
 		}
-		
+
 		return event
 	})
-	
+
 	c.View.SetChangedFunc(func(text string) {
 		c.updateSuggestion()
 	})
@@ -215,7 +219,7 @@ func (c *CommandComponent) setupHandlers() {
 				if len(cmd) > 1 {
 					filter = strings.TrimPrefix(cmd, "/")
 				}
-				
+
 				// Apply Filter (even if empty, to clear it)
 				c.App.SetActiveFilter(filter)
 
@@ -223,9 +227,9 @@ func (c *CommandComponent) setupHandlers() {
 				// Command Mode
 				c.App.ExecuteCmd(cmd)
 			}
-			
+
 			c.Reset()
-			
+
 			// Restore focus and hide cmdline
 			c.App.SetCmdLineVisible(false)
 			c.App.RestoreFocus()
@@ -236,17 +240,17 @@ func (c *CommandComponent) setupHandlers() {
 
 func (c *CommandComponent) Activate(initial string) {
 	label := fmt.Sprintf("[%s:%s:b]CMD> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg) // Defaults to Command
-	
+
 	if strings.HasPrefix(initial, "/") {
 		label = fmt.Sprintf("[%s:%s:b]FILTER> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg)
-		
+
 		// Check if we are in Inspector -> SEARCH context
 		front, _ := c.App.GetPages().GetFrontPage()
 		if front == "inspect" {
 			label = fmt.Sprintf("[%s:%s:b]SEARCH> [-:%s:-]", styles.TagAccentLight, styles.TagBg, styles.TagBg)
 		}
 	}
-	
+
 	c.View.SetLabel(label)
 	c.View.SetText(initial)
 	c.App.GetTviewApp().SetFocus(c.View)

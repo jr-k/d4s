@@ -168,6 +168,18 @@ d4s --context my-remote-ctx
 
 D4S uses a YAML configuration file located at `$XDG_CONFIG_HOME/d4s/config.yaml` (defaults to `~/.config/d4s/config.yaml`).
 
+### Context Selection Precedence
+
+When deciding which Docker context to use, D4S applies the following precedence:
+
+1. `--context` / `-c`
+2. `DOCKER_HOST`
+3. `DOCKER_CONTEXT`
+4. `d4s.defaultContext` from `config.yaml`
+5. Docker CLI's own current/default context behavior
+
+If you select the literal `default` context from `:ctx`, D4S uses Docker's normal default context resolution rather than a named custom context.
+
 All settings are optional and have sensible defaults. Below is a fully documented example:
 
 ```yaml
@@ -178,6 +190,8 @@ d4s:
   apiServerTimeout: 15s
   # Disable all modification commands (delete, kill, restart, etc.). Default: false
   readOnly: false
+  # Default Docker context for d4s when --context, DOCKER_HOST, and DOCKER_CONTEXT are not set. Default: ""
+  defaultContext: ""
   # Default view on startup (containers, images, volumes, networks, services, nodes, compose, secrets). Default: "" (containers)
   defaultView: ""
   # When true, Ctrl+C won't exit — use :quit instead. Default: false
@@ -218,6 +232,14 @@ d4s:
     image: ghcr.io/jr-k/nget:latest
 ```
 
+Example: pin D4S to a preferred remote context by default:
+
+```yaml
+d4s:
+  defaultContext: "my-remote-ctx"
+  defaultView: "containers"
+```
+
 ## Skins
 
 ### Built-in Skins
@@ -237,6 +259,12 @@ D4S comes with a few built-in skins:
 
 D4S supports custom skins. Skins are stored in `$XDG_DATA_HOME/d4s/skins/<name>.yaml` (defaults to `~/.local/share/d4s/skins`).
 
+## Command Palette
+
+Use `:ctx` to open the Docker context picker, switch the current d4s session to a different context, and save that selection as the default context for future d4s launches.
+
+If `DOCKER_HOST` or `DOCKER_CONTEXT` is set in your shell, those environment variables still override the saved D4S default for that launch.
+
 ## Contributing
 
 There's still plenty to do! Take a look at the [contributing guide](CONTRIBUTING.md) to see how you can help.
@@ -250,4 +278,3 @@ There's still plenty to do! Take a look at the [contributing guide](CONTRIBUTING
 *Built with Go & Tview. Inspired by K9s.*
 
 *D4s uses several open source libraries. Thanks to the maintainers who make this possible.*
-
