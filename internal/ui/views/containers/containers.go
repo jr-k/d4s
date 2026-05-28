@@ -71,7 +71,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 						scopedData = append(scopedData, res)
 						continue
 					}
-					
+
 					// 2. Fallback: Match by Image Name/Tag
 					if strings.HasPrefix(c.Image, scope.Value) || strings.Contains(c.Image, scope.Value) {
 						scopedData = append(scopedData, res)
@@ -94,7 +94,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 			return scopedData, nil
 		}
 	}
-	
+
 	return data, nil
 }
 
@@ -120,13 +120,17 @@ func GetShortcuts() []string {
 
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
-	
+
 	if event.Key() == tcell.KeyCtrlD {
 		DeleteAction(app, v)
 		return nil
-	}	
+	}
 	if event.Key() == tcell.KeyCtrlK {
 		StopAction(app, v)
+		return nil
+	}
+	if event.Key() == tcell.KeyEnter {
+		Logs(app, v)
 		return nil
 	}
 	switch event.Rune() {
@@ -181,7 +185,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		PruneAction(app)
 		return nil
 	}
-	
+
 	return event
 }
 
@@ -230,7 +234,7 @@ func Env(app common.AppController, v *view.ResourceView) {
 	for _, line := range env {
 		lines = append(lines, line)
 	}
-	
+
 	app.OpenInspector(inspect.NewTextInspector("Environment container", subject, strings.Join(lines, "\n"), "env"))
 }
 
@@ -331,7 +335,7 @@ func Describe(app common.AppController, v *view.ResourceView) {
 			}
 		}
 	}
-	
+
 	subject := id
 	if len(id) > 12 {
 		subject = id[:12]
@@ -444,7 +448,7 @@ func InspectImage(app common.AppController, v *view.ResourceView) {
 
 	var imageID string
 	var imageName string
-	
+
 	// Find container to get ImageID
 	for _, res := range v.Data {
 		if res.GetID() == id {
@@ -455,7 +459,7 @@ func InspectImage(app common.AppController, v *view.ResourceView) {
 			break
 		}
 	}
-	
+
 	if imageID == "" {
 		app.SetFlashError("Could not find image for container")
 		return
@@ -520,7 +524,7 @@ func RestartOrStart(app common.AppController, v *view.ResourceView) {
 			}
 		}
 	}
-	
+
 	// Default to Restart
 	app.PerformAction(func(id string) error {
 		return app.GetDocker().RestartContainer(id)
@@ -569,7 +573,7 @@ func resolveContainerSubject(v *view.ResourceView, id string) string {
 			}
 		}
 	}
-	
+
 	subject := id
 	if len(id) > 12 {
 		subject = id[:12]
@@ -650,13 +654,13 @@ func NetworksPicker(app common.AppController, v *view.ResourceView) {
 		app.SetFlashPending("updating networks...")
 		app.RunInBackground(func() {
 			var errs []string
-			
+
 			for _, netID := range toConnect {
 				if err := app.GetDocker().ConnectNetwork(netID, id); err != nil {
 					errs = append(errs, fmt.Sprintf("connect %s: %v", netID, err))
 				}
 			}
-			
+
 			for _, netID := range toDisconnect {
 				if err := app.GetDocker().DisconnectNetwork(netID, id); err != nil {
 					errs = append(errs, fmt.Sprintf("disconnect %s: %v", netID, err))
