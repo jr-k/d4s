@@ -199,6 +199,12 @@ func (c *CommandComponent) setupHandlers() {
 			return nil
 		}
 
+		// Handle Right arrow to accept suggestion only if there is an active suggestion
+		if event.Key() == tcell.KeyRight && c.View.suggestionText != "" {
+			c.acceptSuggestion()
+			return nil
+		}
+
 		return event
 	})
 
