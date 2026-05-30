@@ -115,6 +115,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("shift-s", "Root Shell"),
 		common.FormatSCHeader("shift-n", "Attach Network"),
 		common.FormatSCHeader("ctrl-k", "Stop"),
+		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
 
