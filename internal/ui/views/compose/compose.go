@@ -13,6 +13,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
+	"github.com/jr-k/d4s/internal/ui/dialogs"
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
@@ -91,6 +92,10 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
 	if event.Key() == tcell.KeyCtrlK {
 		StopAction(app, v)
+		return nil
+	}
+	if event.Key() == tcell.KeyCtrlD {
+		DeleteAction(app, v)
 		return nil
 	}
 	switch event.Rune() {
@@ -226,10 +231,56 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 	}
 }
 
+func DeleteAction(app common.AppController, v *view.ResourceView) {
+	ids, err := v.GetSelectedIDs()
+	if err != nil || len(ids) == 0 {
+		return
+	}
+
+	label := ids[0]
+	if len(ids) > 1 {
+		label = fmt.Sprintf("%d items", len(ids))
+	}
+
+	// Stop background refresh to prevent UI flickering during confirmation/deletion
+	app.StopAutoRefresh()
+	app.SetPaused(true)
+
+	dialogs.ShowConfirmation(app, "DELETE", label, func(force bool) {
+		// Ensure we always resume UI refresh cycles when the action completes or cancels
+		defer func() {
+			app.SetPaused(false)
+			app.StartAutoRefresh()
+			
+			// Force UI sync to clean up any leftover artifacts from the dialog
+			if app.GetScreen() != nil {
+				app.GetScreen().Sync()
+			}
+		}()
+
+		// Define the multi-item deletion task
+		batchDeleteAction := func(_ string) error {
+			for _, id := range ids {
+				if err := Remove(id, force, app); err != nil {
+					return err // Halts and displays error if one fails
+				}
+			}
+			return nil
+		}
+
+		// Perform the action with the consistent styling
+		app.PerformAction(batchDeleteAction, "deleting", styles.ColorStatusRed)
+	})
+}
+
 func Restart(app common.AppController, id string) error {
 	return app.GetDocker().RestartComposeProject(id)
 }
 
 func Stop(app common.AppController, id string) error {
 	return app.GetDocker().StopComposeProject(id)
+}
+
+func Remove(id string, force bool, app common.AppController) error {
+	return app.GetDocker().DownComposeProject(id)
 }

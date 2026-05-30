@@ -282,6 +282,18 @@ func (m *Manager) Logs(projectName string, since string, tail string, timestamps
 	return &cmdReadCloser{pipe: stdout, cmd: cmd}, nil
 }
 
+func (m *Manager) Down(projectName string) error {
+	var args []string
+	args = append(args, "compose", "-p", projectName, "down")
+
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running docker compose down: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
 type cmdReadCloser struct {
 	pipe io.ReadCloser
 	cmd  *exec.Cmd
@@ -297,4 +309,3 @@ func (c *cmdReadCloser) Close() error {
 	}
 	return c.pipe.Close()
 }
-

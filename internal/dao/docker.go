@@ -555,6 +555,10 @@ func (d *DockerClient) RestartComposeProject(projectName string) error {
 	return d.Compose.Restart(projectName)
 }
 
+func (d *DockerClient) DownComposeProject(projectName string) error {
+	return d.Compose.Down(projectName)
+}
+
 func (d *DockerClient) GetComposeConfig(projectName string) (string, error) {
 	return d.Compose.GetConfig(projectName)
 }
