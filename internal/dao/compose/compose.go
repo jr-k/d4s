@@ -184,34 +184,6 @@ func (m *Manager) Stop(projectName string) error {
 	return nil
 }
 
-func (m *Manager) Restart(projectName string) error {
-	// Find all containers with this project name
-	args := filters.NewArgs()
-	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
-	
-	containers, err := m.cli.ContainerList(m.ctx, container.ListOptions{Filters: args, All: true})
-	if err != nil {
-		return err
-	}
-
-	if len(containers) == 0 {
-		return fmt.Errorf("no containers found for project %s", projectName)
-	}
-
-	timeout := 10
-	var errs []string
-	for _, c := range containers {
-		if err := m.cli.ContainerRestart(m.ctx, c.ID, container.StopOptions{Timeout: &timeout}); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", c.Names[0], err))
-		}
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("errors restarting containers: %s", strings.Join(errs, "; "))
-	}
-	return nil
-}
-
 func (m *Manager) GetConfig(projectName string) (string, error) {
 	// Find one container to get config path
 	args := filters.NewArgs()
@@ -253,6 +225,34 @@ func (m *Manager) GetConfig(projectName string) (string, error) {
 	return sb.String(), nil
 }
 
+func (m *Manager) getConfigPaths(projectName string) ([]string, error) {
+	args := filters.NewArgs()
+	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
+	
+	containers, err := m.cli.ContainerList(m.ctx, container.ListOptions{Filters: args, All: true, Limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(containers) == 0 {
+		return nil, fmt.Errorf("project '%s' not found or has no active containers to read configuration from", projectName)
+	}
+	
+	configFiles := containers[0].Labels["com.docker.compose.project.config_files"]
+	if configFiles == "" {
+		return nil, fmt.Errorf("no config files label found for project '%s'", projectName)
+	}
+	
+	var paths []string
+	for f := range strings.SplitSeq(configFiles, ",") {
+		path := strings.TrimSpace(f)
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
 func (m *Manager) Logs(projectName string, since string, tail string, timestamps bool) (io.ReadCloser, error) {
 	args := []string{"compose", "-p", projectName, "logs", "-f"}
 	if tail != "" && tail != "all" {
@@ -282,6 +282,58 @@ func (m *Manager) Logs(projectName string, since string, tail string, timestamps
 	return &cmdReadCloser{pipe: stdout, cmd: cmd}, nil
 }
 
+func (m *Manager) Down(projectName string) error {
+	var args []string
+	args = append(args, "compose", "-p", projectName, "down")
+
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running docker compose down: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (m *Manager) Up(projectName string) error {
+	paths, err := m.getConfigPaths(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to up project: %v", err)
+	}
+
+	args := []string{"compose", "-p", projectName}
+	for _, path := range paths {
+		args = append(args, "-f", path)
+	}
+	args = append(args, "up", "-d", "--force-recreate")
+
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running docker compose up: %v\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
+func (m *Manager) Build(projectName string) error {
+	paths, err := m.getConfigPaths(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to build project: %v", err)
+	}
+
+	args := []string{"compose", "-p", projectName}
+	for _, path := range paths {
+		args = append(args, "-f", path)
+	}
+	args = append(args, "up", "-d", "--build")
+
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running docker compose up --build: %v\nOutput: %s", err, string(output))
+	}
+	return nil
+}
+
 type cmdReadCloser struct {
 	pipe io.ReadCloser
 	cmd  *exec.Cmd
@@ -297,4 +349,3 @@ func (c *cmdReadCloser) Close() error {
 	}
 	return c.pipe.Close()
 }
-

@@ -13,6 +13,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
+	"github.com/jr-k/d4s/internal/ui/dialogs"
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
@@ -82,6 +83,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
+		common.FormatSCHeader("b", "Build"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 		common.FormatSCHeader("ctrl-k", "Stop"),
 	}
@@ -91,6 +93,10 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
 	if event.Key() == tcell.KeyCtrlK {
 		StopAction(app, v)
+		return nil
+	}
+	if event.Key() == tcell.KeyCtrlD {
+		DeleteAction(app, v)
 		return nil
 	}
 	switch event.Rune() {
@@ -104,7 +110,10 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		EditAction(app, v)
 		return nil
 	case 'r':
-		RestartAction(app, v)
+		UpAction(app, v)
+		return nil
+	case 'b':
+		BuildAction(app, v)
 		return nil
 	}
 	
@@ -150,12 +159,6 @@ func NavigateToContainers(app common.AppController, v *view.ResourceView) {
 		// Switch to Containers
 		app.SwitchTo(styles.TitleContainers)
 	}
-}
-
-func RestartAction(app common.AppController, v *view.ResourceView) {
-	app.PerformAction(func(id string) error {
-		return app.GetDocker().RestartComposeProject(id)
-	}, "restarting", styles.ColorStatusOrange)
 }
 
 func StopAction(app common.AppController, v *view.ResourceView) {
@@ -226,10 +229,64 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 	}
 }
 
-func Restart(app common.AppController, id string) error {
-	return app.GetDocker().RestartComposeProject(id)
+func UpAction(app common.AppController, v *view.ResourceView) {
+	app.PerformAction(func(id string) error {
+		return app.GetDocker().UpComposeProject(id)
+	}, "restarting", styles.ColorStatusYellow)
+}
+
+func BuildAction(app common.AppController, v *view.ResourceView) {
+	app.PerformAction(func(id string) error {
+		return app.GetDocker().BuildComposeProject(id)
+	}, "building", styles.ColorStatusYellow)
+}
+
+func DeleteAction(app common.AppController, v *view.ResourceView) {
+	ids, err := v.GetSelectedIDs()
+	if err != nil || len(ids) == 0 {
+		return
+	}
+
+	label := ids[0]
+	if len(ids) > 1 {
+		label = fmt.Sprintf("%d items", len(ids))
+	}
+
+	// Stop background refresh to prevent UI flickering during confirmation/deletion
+	app.StopAutoRefresh()
+	app.SetPaused(true)
+
+	dialogs.ShowConfirmation(app, "DELETE", label, func(force bool) {
+		// Ensure we always resume UI refresh cycles when the action completes or cancels
+		defer func() {
+			app.SetPaused(false)
+			app.StartAutoRefresh()
+			
+			// Force UI sync to clean up any leftover artifacts from the dialog
+			if app.GetScreen() != nil {
+				app.GetScreen().Sync()
+			}
+		}()
+
+		// Define the multi-item deletion task
+		batchDeleteAction := func(_ string) error {
+			for _, id := range ids {
+				if err := Remove(id, force, app); err != nil {
+					return err // Halts and displays error if one fails
+				}
+			}
+			return nil
+		}
+
+		// Perform the action with the consistent styling
+		app.PerformAction(batchDeleteAction, "deleting", styles.ColorStatusRed)
+	})
 }
 
 func Stop(app common.AppController, id string) error {
 	return app.GetDocker().StopComposeProject(id)
+}
+
+func Remove(id string, force bool, app common.AppController) error {
+	return app.GetDocker().DownComposeProject(id)
 }
