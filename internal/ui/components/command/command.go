@@ -118,6 +118,7 @@ var availableCommands = []string{
 	"stacks",
 	"tasks",
 	"contexts",
+	"plugins",
 	"help",
 	"aliases",
 	"q",
@@ -132,6 +133,7 @@ var availableCommands = []string{
 	"k",
 	"t",
 	"o",
+	"g",
 	"d",
 }
 

@@ -28,6 +28,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/views/configs"
 	"github.com/jr-k/d4s/internal/ui/views/secrets"
 	"github.com/jr-k/d4s/internal/ui/views/contexts"
+	"github.com/jr-k/d4s/internal/ui/views/plugins"
 	"github.com/jr-k/d4s/internal/ui/views/stacks"
 	"github.com/jr-k/d4s/internal/ui/views/tasks"
 	"github.com/jr-k/d4s/internal/ui/views/services"
@@ -390,6 +391,18 @@ func (a *App) initUI() {
 	}
 	a.Views[styles.TitleContexts] = vContexts
 
+	// Plugins
+	vPlugins := view.NewResourceView(a, styles.TitlePlugins)
+	vPlugins.ShortcutsFunc = plugins.GetShortcuts
+	vPlugins.FetchFunc = plugins.Fetch
+	vPlugins.InspectFunc = plugins.Inspect
+	vPlugins.RemoveFunc = plugins.Remove
+	vPlugins.Headers = plugins.Headers
+	vPlugins.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return plugins.InputHandler(vPlugins, event)
+	}
+	a.Views[styles.TitlePlugins] = vPlugins
+
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
 	}
@@ -603,6 +616,8 @@ func (a *App) resolveDefaultView() string {
 		return styles.TitleTasks
 	case "contexts", "context":
 		return styles.TitleContexts
+	case "plugins", "plugin":
+		return styles.TitlePlugins
 	default:
 		return styles.TitleContainers
 	}

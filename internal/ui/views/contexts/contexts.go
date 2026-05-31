@@ -24,18 +24,18 @@ type Context struct {
 
 func (c Context) GetID() string { return c.Name }
 func (c Context) GetCells() []string {
-	current := ""
+	current := "False"
 	if c.Current {
-		current = "✓"
+		current = "True"
 	}
 	return []string{c.Name, current, c.Description, c.Endpoint}
 }
 
 func (c Context) GetStatusColor() (tcell.Color, tcell.Color) {
 	if c.Current {
-		return styles.ColorStatusGreen, styles.ColorBlack
+		return styles.ColorIdle, styles.ColorBlack
 	}
-	return styles.ColorIdle, styles.ColorBlack
+	return styles.ColorStatusGray, styles.ColorBlack
 }
 
 func (c Context) GetColumnValue(column string) string {
@@ -44,9 +44,9 @@ func (c Context) GetColumnValue(column string) string {
 		return c.Name
 	case "current":
 		if c.Current {
-			return "✓"
+			return "True"
 		}
-		return ""
+		return "False"
 	case "description":
 		return c.Description
 	case "endpoint":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -51,6 +52,13 @@ type Task = task.Task
 type ComposeProject = compose.ComposeProject
 
 // Cached container info for instant scoped queries (drill-down)
+type PluginInfo struct {
+	ID          string
+	Name        string
+	Description string
+	Enabled     bool
+}
+
 type containerInfoCache struct {
 	Mounts []mountInfoCache
 	NetIDs map[string]bool
@@ -622,6 +630,88 @@ func (d *DockerClient) CreateContext(name, description, host string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error creating context: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (d *DockerClient) ListPlugins() ([]PluginInfo, error) {
+	cmd := exec.Command("docker", "plugin", "ls", "--format", "{{json .}}")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("error listing plugins: %v, output: %s", err, string(output))
+	}
+
+	var plugins []PluginInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line == "" {
+			continue
+		}
+		var p struct {
+			ID              string `json:"ID"`
+			Name            string `json:"Name"`
+			Description     string `json:"Description"`
+			Enabled         bool   `json:"Enabled"`
+			PluginReference string `json:"PluginReference"`
+		}
+		if err := json.Unmarshal([]byte(line), &p); err != nil {
+			continue
+		}
+		plugins = append(plugins, PluginInfo{
+			ID:          p.ID,
+			Name:        p.Name,
+			Description: p.Description,
+			Enabled:     p.Enabled,
+		})
+	}
+	return plugins, nil
+}
+
+func (d *DockerClient) InspectPlugin(name string) (string, error) {
+	cmd := exec.Command("docker", "plugin", "inspect", name)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("error inspecting plugin: %v, output: %s", err, string(output))
+	}
+	return string(output), nil
+}
+
+func (d *DockerClient) RemovePlugin(name string, force bool) error {
+	args := []string{"plugin", "rm"}
+	if force {
+		args = append(args, "-f")
+	}
+	args = append(args, name)
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error removing plugin: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (d *DockerClient) EnablePlugin(name string) error {
+	cmd := exec.Command("docker", "plugin", "enable", name)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error enabling plugin: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (d *DockerClient) DisablePlugin(name string) error {
+	cmd := exec.Command("docker", "plugin", "disable", name)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error disabling plugin: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (d *DockerClient) InstallPlugin(name string) error {
+	cmd := exec.Command("docker", "plugin", "install", "--grant-all-permissions", name)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error installing plugin: %v, output: %s", err, string(output))
 	}
 	return nil
 }

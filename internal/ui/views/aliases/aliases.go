@@ -70,6 +70,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		{Title: styles.TitleStacks, Resource: "stacks", Group: "swarm", Shortcuts: []string{"k", "st", "stack", "stacks"}},
 		{Title: styles.TitleTasks, Resource: "tasks", Group: "swarm", Shortcuts: []string{"t", "task", "tasks"}},
 		{Title: styles.TitleContexts, Resource: "contexts", Group: "docker", Shortcuts: []string{"o", "ctx", "context", "contexts"}},
+		{Title: styles.TitlePlugins, Resource: "plugins", Group: "docker", Shortcuts: []string{"g", "pl", "plugin", "plugins"}},
 		{Title: styles.TitleCompose, Resource: "compose", Group: "compose", Shortcuts: []string{"p", "cp", "compose", "project", "projects"}},
 	}
 
