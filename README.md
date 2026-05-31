@@ -33,11 +33,12 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of K9s to the local D
 - **Fancy UI**: Modern TUI with Dracula theme, smooth navigation, and live updates.
 - **Keyboard Centric**: Vim-like navigation (`j`/`k`), shortcuts for everything. No mouse needed.
 - **Full Scope**: Supports **Containers**, **Images**, **Volumes**, **Networks**.
-- **Compose Aware**: Easily identify containers belonging to Compose stacks.
-- **Swarm Aware**: Supports **Nodes**, **Services**.
+- **Compose Aware**: Easily identify containers belonging to **Compose Projects**.
+- **Swarm Aware**: Supports **Nodes**, **Stacks**, **Services**, **Tasks**, **Secrets**, **Configs**.
+- **Docker Settings**: Supports **Contexts**, **Plugins**.
 - **Powerful Search**: Instant fuzzy filtering (`/`) and command palette (`:`).
 - **Live Stats**: Real-time CPU/Mem usage for containers and host context.
-- **Advanced Logs**: Streaming logs with auto-scroll, timestamps toggle, and wrap mode.
+- **Advanced Logs**: Streaming logs with auto-scroll, timestamps toggle, wrap mode and dump to file.
 - **Quick Shell**: Drop into a container shell (`s`) in a split second.
 - **Contextual Actions**: Inspect, Restart, Stop, Prune, Delete with safety confirmations.
 
