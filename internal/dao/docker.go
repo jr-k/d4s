@@ -25,6 +25,7 @@ import (
 	"github.com/jr-k/d4s/internal/dao/docker/container"
 	"github.com/jr-k/d4s/internal/dao/docker/image"
 	"github.com/jr-k/d4s/internal/dao/docker/network"
+	"github.com/jr-k/d4s/internal/dao/docker/dconfig"
 	"github.com/jr-k/d4s/internal/dao/docker/secret"
 	"github.com/jr-k/d4s/internal/dao/docker/volume"
 	"github.com/jr-k/d4s/internal/dao/swarm/node"
@@ -41,6 +42,7 @@ type Network = network.Network
 type Service = service.Service
 type Node = node.Node
 type Secret = secret.Secret
+type Config = dconfig.Config
 type ComposeProject = compose.ComposeProject
 
 // Cached container info for instant scoped queries (drill-down)
@@ -69,6 +71,7 @@ type DockerClient struct {
 	Service   *service.Manager
 	Node      *node.Manager
 	Secret    *secret.Manager
+	Config    *dconfig.Manager
 	Compose   *compose.Manager
 
 	// Resource cache for fast scoped queries and stale-while-revalidate
@@ -109,6 +112,7 @@ func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContex
 		Service:          service.NewManager(cli, ctx),
 		Node:             node.NewManager(cli, ctx),
 		Secret:           secret.NewManager(cli, ctx),
+		Config:           dconfig.NewManager(cli, ctx),
 		Compose:          compose.NewManager(cli, ctx),
 		containerInfoMap: make(map[string]containerInfoCache),
 		refreshing:       make(map[string]bool),
@@ -547,12 +551,32 @@ func (d *DockerClient) CreateSecret(name string, data []byte) error {
 	return d.Secret.Create(name, data)
 }
 
+func (d *DockerClient) ListConfigs() ([]common.Resource, error) {
+	return d.Config.List()
+}
+
+func (d *DockerClient) RemoveConfig(id string) error {
+	return d.Config.Remove(id)
+}
+
+func (d *DockerClient) CreateConfig(name string, data []byte) error {
+	return d.Config.Create(name, data)
+}
+
+func (d *DockerClient) UpdateConfig(id string, data []byte) error {
+	return d.Config.Update(id, data)
+}
+
 func (d *DockerClient) StopComposeProject(projectName string) error {
 	return d.Compose.Stop(projectName)
 }
 
 func (d *DockerClient) UpComposeProject(projectName string) error {
 	return d.Compose.Up(projectName)
+}
+
+func (d *DockerClient) RedeployComposeProject(projectName string) error {
+	return d.Compose.Redeploy(projectName)
 }
 
 func (d *DockerClient) BuildComposeProject(projectName string) error {
@@ -614,6 +638,36 @@ func (d *DockerClient) GetServiceSecrets(id string) ([]*swarm.SecretReference, e
 
 func (d *DockerClient) SetServiceSecrets(id string, secretRefs []*swarm.SecretReference) error {
 	return d.Service.SetSecrets(id, secretRefs)
+}
+
+func (d *DockerClient) GetServiceConfigs(id string) ([]*swarm.ConfigReference, error) {
+	return d.Service.GetConfigs(id)
+}
+
+func (d *DockerClient) SetServiceConfigs(id string, configRefs []*swarm.ConfigReference) error {
+	return d.Service.SetConfigs(id, configRefs)
+}
+
+func (d *DockerClient) ListServicesForConfig(configID string) ([]common.Resource, error) {
+	services, err := d.Service.List()
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []common.Resource
+	for _, svc := range services {
+		cfgs, err := d.Service.GetConfigs(svc.GetID())
+		if err == nil {
+			for _, c := range cfgs {
+				if c.ConfigID == configID {
+					filtered = append(filtered, svc)
+					break
+				}
+			}
+		}
+	}
+
+	return filtered, nil
 }
 
 func (d *DockerClient) GetServiceNetworks(id string) ([]swarm.NetworkAttachmentConfig, error) {

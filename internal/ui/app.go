@@ -25,6 +25,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/views/images"
 	"github.com/jr-k/d4s/internal/ui/views/networks"
 	"github.com/jr-k/d4s/internal/ui/views/nodes"
+	"github.com/jr-k/d4s/internal/ui/views/configs"
 	"github.com/jr-k/d4s/internal/ui/views/secrets"
 	"github.com/jr-k/d4s/internal/ui/views/services"
 	"github.com/jr-k/d4s/internal/ui/views/volumes"
@@ -340,6 +341,18 @@ func (a *App) initUI() {
 	}
 	a.Views[styles.TitleSecrets] = vSecrets
 
+	// Configs
+	vConfigs := view.NewResourceView(a, styles.TitleConfigs)
+	vConfigs.ShortcutsFunc = configs.GetShortcuts
+	vConfigs.FetchFunc = configs.Fetch
+	vConfigs.InspectFunc = configs.Inspect
+	vConfigs.RemoveFunc = configs.Remove
+	vConfigs.Headers = configs.Headers
+	vConfigs.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return configs.InputHandler(vConfigs, event)
+	}
+	a.Views[styles.TitleConfigs] = vConfigs
+
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
 	}
@@ -544,6 +557,8 @@ func (a *App) resolveDefaultView() string {
 		return styles.TitleAliases
 	case "secrets", "secret":
 		return styles.TitleSecrets
+	case "configs", "config":
+		return styles.TitleConfigs
 	default:
 		return styles.TitleContainers
 	}

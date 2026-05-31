@@ -99,7 +99,7 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
-	label := ids[0]
+	label := fmt.Sprintf("[yellow]%s", ids[0])
 	if len(ids) > 1 {
 		label = fmt.Sprintf("%d items", len(ids))
 	}

@@ -136,7 +136,18 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 	}
 
 	label := ids[0]
-	if len(ids) > 1 {
+	if len(ids) == 1 {
+		row, _ := v.Table.GetSelection()
+		if row > 0 && row <= len(v.Data) {
+			item := v.Data[row-1]
+			if item.GetID() == ids[0] {
+				cells := item.GetCells()
+				if len(cells) > 1 {
+					label = fmt.Sprintf("%s ([%s]%s[yellow])", label, styles.TagCyan, cells[1])
+				}
+			}
+		}
+	} else {
 		label = fmt.Sprintf("%d items", len(ids))
 	}
 

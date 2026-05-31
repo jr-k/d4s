@@ -60,6 +60,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		{Title: styles.TitleServices, Resource: "services", Group: "swarm"},
 		{Title: styles.TitleNodes, Resource: "nodes", Group: "swarm"},
 		{Title: styles.TitleSecrets, Resource: "secrets", Group: "swarm"},
+		{Title: styles.TitleConfigs, Resource: "configs", Group: "swarm"},
 		{Title: styles.TitleCompose, Resource: "compose", Group: "compose"},
 	}
 

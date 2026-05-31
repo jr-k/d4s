@@ -152,6 +152,8 @@ func Inspect(cli *client.Client, ctx context.Context, resourceType, id string) (
 		data, _, err = cli.NodeInspectWithRaw(ctx, id)
 	case "secret":
 		data, _, err = cli.SecretInspectWithRaw(ctx, id)
+	case "config":
+		data, _, err = cli.ConfigInspectWithRaw(ctx, id)
 	default:
 		return "", fmt.Errorf("unknown resource type: %s", resourceType)
 	}

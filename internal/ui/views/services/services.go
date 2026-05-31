@@ -110,6 +110,11 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		return app.GetDocker().ListServicesForSecret(scope.Value)
 	}
 
+	// Filter by Config Scope
+	if scope != nil && scope.Type == "config" {
+		return app.GetDocker().ListServicesForConfig(scope.Value)
+	}
+
 	services, err := app.GetDocker().ListServices()
 	if err != nil {
 		return nil, err
@@ -145,6 +150,7 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("e", "Env"),
 		common.FormatSCHeader("x", "Secrets"),
+		common.FormatSCHeader("f", "Configs"),
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("p", "Ps"),
 		common.FormatSCHeader("d", "Describe"),
@@ -153,6 +159,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("z", "No Replica"),
 		common.FormatSCHeader("shift-e", "Edit Env"),
 		common.FormatSCHeader("shift-x", "Attach Secrets"),
+		common.FormatSCHeader("shift-f", "Attach Configs"),
 		common.FormatSCHeader("shift-n", "Attach Networks"),
 		common.FormatSCHeader("shift-i", "Edit Image"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
@@ -181,6 +188,12 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'X':
 		SecretsPicker(app, v)
+		return nil
+	case 'f':
+		Configs(app, v)
+		return nil
+	case 'F':
+		ConfigsPicker(app, v)
 		return nil
 	case 'E':
 		EnvPicker(app, v)
@@ -315,7 +328,23 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
 	if err != nil { return }
 
-	dialogs.ShowConfirmation(app, "DELETE", fmt.Sprintf("%d services", len(ids)), func(force bool) {
+	label := ids[0]
+	if len(ids) == 1 {
+		row, _ := v.Table.GetSelection()
+		if row > 0 && row <= len(v.Data) {
+			item := v.Data[row-1]
+			if item.GetID() == ids[0] {
+				cells := item.GetCells()
+				if len(cells) > 1 {
+					label = fmt.Sprintf("%s ([%s]%s[yellow])", label, styles.TagCyan, cells[1])
+				}
+			}
+		}
+	} else {
+		label = fmt.Sprintf("%d items", len(ids))
+	}
+
+	dialogs.ShowConfirmation(app, "DELETE", label, func(force bool) {
 		simpleAction := func(id string) error {
 			return Remove(id, force, app)
 		}
@@ -515,6 +544,120 @@ func SecretsPicker(app common.AppController, v *view.ResourceView) {
 					app.SetFlashError(fmt.Sprintf("%v", err))
 				} else {
 					app.SetFlashSuccess("service secrets updated")
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
+func Configs(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	cfgs, err := app.GetDocker().GetServiceConfigs(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	var lines []string
+	if len(cfgs) == 0 {
+		lines = append(lines, "# No configs attached to this service")
+	} else {
+		lines = append(lines, "# Configs attached to this service")
+		lines = append(lines, "")
+		for _, c := range cfgs {
+			configID := c.ConfigID
+			if len(configID) > 12 {
+				configID = configID[:12]
+			}
+			line := fmt.Sprintf("- %s (ID: %s)", c.ConfigName, configID)
+			if c.File != nil {
+				line += fmt.Sprintf(" -> %s", c.File.Name)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	app.OpenInspector(inspect.NewTextInspector("Configs service", subject, strings.Join(lines, "\n"), "text"))
+}
+
+func ConfigsPicker(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	allConfigs, err := app.GetDocker().ListConfigs()
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	if len(allConfigs) == 0 {
+		app.SetFlashError("no configs available")
+		return
+	}
+
+	currentConfigs, err := app.GetDocker().GetServiceConfigs(id)
+	if err != nil {
+		app.SetFlashError(fmt.Sprintf("%v", err))
+		return
+	}
+
+	attachedIDs := make(map[string]bool)
+	for _, c := range currentConfigs {
+		attachedIDs[c.ConfigID] = true
+	}
+
+	var items []dialogs.MultiPickerItem
+	for _, cfg := range allConfigs {
+		c := cfg.(dao.Config)
+		items = append(items, dialogs.MultiPickerItem{
+			ID:       c.ID,
+			Label:    c.Name,
+			Selected: attachedIDs[c.ID],
+		})
+	}
+
+	subject := resolveServiceSubject(v, id)
+
+	dialogs.ShowMultiPicker(app, fmt.Sprintf("Configs for %s", subject), items, func(selected []string) {
+		selectedMap := make(map[string]bool)
+		for _, id := range selected {
+			selectedMap[id] = true
+		}
+
+		var newConfigRefs []*swarm.ConfigReference
+		for _, cfg := range allConfigs {
+			c := cfg.(dao.Config)
+			if selectedMap[c.ID] {
+				newConfigRefs = append(newConfigRefs, &swarm.ConfigReference{
+					ConfigID:   c.ID,
+					ConfigName: c.Name,
+					File: &swarm.ConfigReferenceFileTarget{
+						Name: c.Name,
+						UID:  "0",
+						GID:  "0",
+						Mode: 0444,
+					},
+				})
+			}
+		}
+
+		app.SetFlashPending("updating service configs...")
+		app.RunInBackground(func() {
+			err := app.GetDocker().SetServiceConfigs(id, newConfigRefs)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.SetFlashError(fmt.Sprintf("%v", err))
+				} else {
+					app.SetFlashSuccess("service configs updated")
 					app.RefreshCurrentView()
 				}
 			})

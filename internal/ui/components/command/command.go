@@ -114,6 +114,7 @@ var availableCommands = []string{
 	"services",
 	"nodes",
 	"compose",
+	"configs",
 	"help",
 	"aliases",
 	"q",

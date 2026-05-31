@@ -92,7 +92,18 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 	}
 
 	label := ids[0]
-	if len(ids) > 1 {
+	if len(ids) == 1 {
+		row, _ := v.Table.GetSelection()
+		if row > 0 && row <= len(v.Data) {
+			item := v.Data[row-1]
+			if item.GetID() == ids[0] {
+				cells := item.GetCells()
+				if len(cells) > 1 {
+					label = fmt.Sprintf("%s ([%s]%s[yellow])", label, styles.TagCyan, cells[1])
+				}
+			}
+		}
+	} else {
 		label = fmt.Sprintf("%d items", len(ids))
 	}
 
@@ -123,20 +134,17 @@ func Create(app common.AppController) {
 			return
 		}
 
-		app.SetFlashPending(fmt.Sprintf("creating secret %s...", name))
+		app.AppendFlashPending(fmt.Sprintf("creating secret %s...", name), 30*time.Second)
+
 		app.RunInBackground(func() {
 			err := app.GetDocker().CreateSecret(name, []byte(value))
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
-					app.SetFlashError(fmt.Sprintf("%v", err))
+					app.AppendFlashError(fmt.Sprintf("failed to create secret: %v", err))
 				} else {
-					app.SetFlashSuccess(fmt.Sprintf("secret %s created", name))
-					app.ScheduleViewHighlight(styles.TitleSecrets, func(res dao.Resource) bool {
-						sec, ok := res.(dao.Secret)
-						return ok && sec.Name == name
-					}, styles.ColorStatusGreen, styles.ColorBlack, 2*time.Second)
-					app.RefreshCurrentView()
+					app.AppendFlashSuccess(fmt.Sprintf("secret %s created", name))
 				}
+				app.RefreshCurrentView()
 			})
 		})
 	})

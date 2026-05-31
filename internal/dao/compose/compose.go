@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
@@ -50,7 +51,7 @@ func (cp ComposeProject) GetStatusColor() (tcell.Color, tcell.Color) {
 			if desired == 0 && running == 0 {
 				return styles.ColorStatusGray, styles.ColorBlack
 			} else if running < desired {
-				return styles.ColorStatusYellow, styles.ColorBlack
+				return styles.ColorStatusGray, styles.ColorBlack
 			} else if running > desired {
 				return tcell.ColorMediumPurple, styles.ColorBlack
 			} else if desired > 0 {
@@ -91,7 +92,9 @@ func (m *Manager) List() ([]common.Resource, error) {
 
 	type projData struct {
 		total       int
+		jobs        int
 		running     int
+		restarting  int
 		config      string
 		configPaths []string
 	}
@@ -116,23 +119,22 @@ func (m *Manager) List() ([]common.Resource, error) {
 			}
 		}
 
-		if c.State == "running" {
-			projects[proj].total++
-			projects[proj].running++
+		if c.Labels["d4s.lifecycle"] == "job" {
+			projects[proj].jobs++
 			continue
 		}
 
-		// One-shot containers (restart: "no") that exited successfully are expected to stop
-		if c.State == "exited" {
-			inspect, err := m.cli.ContainerInspect(m.ctx, c.ID)
-			if err == nil && inspect.HostConfig != nil &&
-				inspect.HostConfig.RestartPolicy.Name == "no" &&
-				inspect.State != nil && inspect.State.ExitCode == 0 {
-				continue
-			}
+		switch c.State {
+		case "running":
+			projects[proj].running++
+		case "restarting":
+			projects[proj].restarting++
 		}
+	}
 
-		projects[proj].total++
+	for name, data := range projects {
+		total := m.countServices(name, data.configPaths)
+		data.total = total - data.jobs
 	}
 
 	var res []common.Resource
@@ -225,6 +227,28 @@ func (m *Manager) GetConfig(projectName string) (string, error) {
 	return sb.String(), nil
 }
 
+func (m *Manager) countServices(projectName string, configPaths []string) int {
+	args := []string{"compose", "-p", projectName}
+	for _, path := range configPaths {
+		args = append(args, "-f", path)
+	}
+	args = append(args, "config", "--services")
+
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line != "" {
+			count++
+		}
+	}
+	return count
+}
+
 func (m *Manager) getConfigPaths(projectName string) ([]string, error) {
 	args := filters.NewArgs()
 	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
@@ -290,6 +314,33 @@ func (m *Manager) Down(projectName string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error running docker compose down: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+func (m *Manager) Redeploy(projectName string) error {
+	paths, err := m.getConfigPaths(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to redeploy project: %v", err)
+	}
+
+	if err := m.Down(projectName); err != nil {
+		return err
+	}
+
+	args := []string{"compose", "-p", projectName}
+	for _, path := range paths {
+		args = append(args, "-f", path)
+	}
+	args = append(args, "up", "-d", "--force-recreate")
+
+	cmd := exec.Command("docker", args...)
+	if len(paths) > 0 {
+		cmd.Dir = filepath.Dir(paths[0])
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running docker compose up: %v\nOutput: %s", err, string(output))
 	}
 	return nil
 }

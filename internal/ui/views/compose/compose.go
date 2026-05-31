@@ -84,6 +84,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
 		common.FormatSCHeader("b", "Build"),
+		common.FormatSCHeader("shift-r", "(Re)Deploy"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 		common.FormatSCHeader("ctrl-k", "Stop"),
 	}
@@ -111,6 +112,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'r':
 		UpAction(app, v)
+		return nil
+	case 'R':
+		RedeployAction(app, v)
 		return nil
 	case 'b':
 		BuildAction(app, v)
@@ -233,6 +237,12 @@ func UpAction(app common.AppController, v *view.ResourceView) {
 	app.PerformAction(func(id string) error {
 		return app.GetDocker().UpComposeProject(id)
 	}, "restarting", styles.ColorStatusOrange)
+}
+
+func RedeployAction(app common.AppController, v *view.ResourceView) {
+	app.PerformAction(func(id string) error {
+		return app.GetDocker().RedeployComposeProject(id)
+	}, "redeploying", styles.ColorStatusMagenta)
 }
 
 func BuildAction(app common.AppController, v *view.ResourceView) {

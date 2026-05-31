@@ -293,6 +293,35 @@ func (m *Manager) SetSecrets(id string, secretRefs []*swarm.SecretReference) err
 	return err
 }
 
+func (m *Manager) GetConfigs(id string) ([]*swarm.ConfigReference, error) {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return []*swarm.ConfigReference{}, nil
+	}
+
+	return service.Spec.TaskTemplate.ContainerSpec.Configs, nil
+}
+
+func (m *Manager) SetConfigs(id string, configRefs []*swarm.ConfigReference) error {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return fmt.Errorf("service has no container spec")
+	}
+
+	service.Spec.TaskTemplate.ContainerSpec.Configs = configRefs
+
+	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
+	return err
+}
+
 func (m *Manager) GetNetworks(id string) ([]swarm.NetworkAttachmentConfig, error) {
 	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
 	if err != nil {

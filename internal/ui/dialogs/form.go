@@ -14,6 +14,7 @@ type FieldType int
 const (
 	FieldTypeInput FieldType = iota
 	FieldTypeCheckbox
+	FieldTypeTextArea
 )
 
 type FormField struct {
@@ -37,6 +38,11 @@ func ShowFormWithDescription(app common.AppController, title, description string
 
 	dialogWidth := 50
 	dialogHeight := 4 + len(fields)*2
+	for _, f := range fields {
+		if f.Type == FieldTypeTextArea {
+			dialogHeight += 6
+		}
+	}
 
 	pages := app.GetPages()
 	tviewApp := app.GetTviewApp()
@@ -123,6 +129,20 @@ func ShowFormWithDescription(app common.AppController, title, description string
 				return "false"
 			}
 			fw.setFocus = updateCheckbox
+
+		case FieldTypeTextArea:
+			ta := tview.NewTextArea().
+				SetText(f.Default, false).
+				SetPlaceholder(f.Placeholder)
+			ta.SetBackgroundColor(styles.ColorBlack)
+			ta.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(styles.ColorSelectBg))
+			ta.SetPlaceholderStyle(tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorSelectBg))
+
+			fw.widget = ta
+			fw.getValue = func() string {
+				return ta.GetText()
+			}
+			fw.setFocus = func(focused bool) {}
 		}
 
 		widgets[i] = fw
@@ -136,12 +156,38 @@ func ShowFormWithDescription(app common.AppController, title, description string
 			AddItem(fw.widget, 0, 1, false).
 			AddItem(empty(), 1, 0, false)
 
-		formRows.AddItem(row, 1, 0, false)
+		rowHeight := 1
+		if f.Type == FieldTypeTextArea {
+			rowHeight = 8
+		}
+		formRows.AddItem(row, rowHeight, 0, false)
 		// Add spacing between fields
 		if i < len(fields)-1 {
 			formRows.AddItem(empty(), 1, 0, false)
 		}
 	}
+
+	// Confirm button
+	confirmBtn := tview.NewButton("Confirm").
+		SetLabelColor(styles.ColorBlack).
+		SetBackgroundColorActivated(styles.ColorAccent).
+		SetLabelColorActivated(styles.ColorBlack)
+	confirmBtn.SetBackgroundColor(styles.ColorSelectBg)
+
+	confirmRow := tview.NewFlex().
+		SetDirection(tview.FlexColumn).
+		AddItem(empty(), 0, 1, false).
+		AddItem(confirmBtn, 11, 0, false).
+		AddItem(empty(), 1, 0, false)
+
+	formRows.AddItem(empty(), 1, 0, false)
+	formRows.AddItem(confirmRow, 1, 0, false)
+	formRows.AddItem(empty(), 1, 0, false)
+	dialogHeight += 2
+
+	// focusable items = widgets + confirm button
+	focusCount := len(widgets) + 1
+	confirmIndex := len(widgets)
 
 	// Main content
 	content := tview.NewFlex().
@@ -180,23 +226,52 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		return result
 	}
 
+	submitForm := func() {
+		closeModal()
+		onSubmit(getResults())
+	}
+
 	// Focus management
 	setFocusTo := func(index int) {
 		for i, fw := range widgets {
 			fw.setFocus(i == index)
 		}
-		tviewApp.SetFocus(widgets[index].widget)
+		if index == confirmIndex {
+			tviewApp.SetFocus(confirmBtn)
+		} else {
+			tviewApp.SetFocus(widgets[index].widget)
+		}
 	}
 
 	moveFocus := func(direction int) {
 		currentFocus += direction
 		if currentFocus < 0 {
-			currentFocus = len(widgets) - 1
-		} else if currentFocus >= len(widgets) {
+			currentFocus = focusCount - 1
+		} else if currentFocus >= focusCount {
 			currentFocus = 0
 		}
 		setFocusTo(currentFocus)
 	}
+
+	// Confirm button handlers
+	confirmBtn.SetSelectedFunc(func() {
+		submitForm()
+	})
+	confirmBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc {
+			closeModal()
+			return nil
+		}
+		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyDown {
+			moveFocus(1)
+			return nil
+		}
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
+			moveFocus(-1)
+			return nil
+		}
+		return event
+	})
 
 	// Setup input capture for each widget
 	for i := range widgets {
@@ -208,8 +283,7 @@ func ShowFormWithDescription(app common.AppController, title, description string
 			input := fw.widget.(*tview.InputField)
 			input.SetDoneFunc(func(key tcell.Key) {
 				if key == tcell.KeyEnter {
-					closeModal()
-					onSubmit(getResults())
+					submitForm()
 				} else if key == tcell.KeyEsc {
 					closeModal()
 				}
@@ -247,8 +321,25 @@ func ShowFormWithDescription(app common.AppController, title, description string
 					return nil
 				}
 				if event.Key() == tcell.KeyEnter {
+					submitForm()
+					return nil
+				}
+				return event
+			})
+
+		case FieldTypeTextArea:
+			ta := fw.widget.(*tview.TextArea)
+			ta.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+				if event.Key() == tcell.KeyEsc {
 					closeModal()
-					onSubmit(getResults())
+					return nil
+				}
+				if event.Key() == tcell.KeyTab {
+					moveFocus(1)
+					return nil
+				}
+				if event.Key() == tcell.KeyBacktab {
+					moveFocus(-1)
 					return nil
 				}
 				return event
