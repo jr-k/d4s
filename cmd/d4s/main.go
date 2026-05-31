@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -15,20 +17,25 @@ import (
 	"github.com/jr-k/d4s/internal/ui/common"
 )
 
+var hexColorRe = regexp.MustCompile(`\[#([0-9a-fA-F]{6})\]`)
+
 func printColored(format string, a ...interface{}) {
-	// Mapping from [orange] etc to their respective truecolor ANSI sequences
 	colorMap := map[string]string{
-		"[#ffb86c]": "\x1b[38;2;255;184;108m",
-		"[#ff8c00]": "\x1b[38;2;255;140;3m",
-		"[orange]":  "\x1b[38;2;255;184;108m",
-		"[cyan]":    "\x1b[38;2;57;166;255m",
-		"[white]":   "\x1b[38;2;255;255;255m",
+		"[orange]": "\x1b[38;2;255;184;108m",
+		"[cyan]":   "\x1b[38;2;57;166;255m",
+		"[white]":  "\x1b[38;2;255;255;255m",
 	}
-	// Replace all [color] tags with color codes in the format string
 	s := fmt.Sprintf(format, a...)
 	for k, v := range colorMap {
 		s = strings.ReplaceAll(s, k, v)
 	}
+	s = hexColorRe.ReplaceAllStringFunc(s, func(match string) string {
+		hex := hexColorRe.FindStringSubmatch(match)[1]
+		r, _ := strconv.ParseInt(hex[0:2], 16, 64)
+		g, _ := strconv.ParseInt(hex[2:4], 16, 64)
+		b, _ := strconv.ParseInt(hex[4:6], 16, 64)
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r, g, b)
+	})
 	if strings.Contains(s, "\x1b[38;2;") {
 		s += "\x1b[0m"
 	}
