@@ -584,6 +584,10 @@ func (d *DockerClient) UpdateConfig(id string, data []byte) error {
 	return d.Config.Update(id, data)
 }
 
+func (d *DockerClient) GetConfigData(id string) ([]byte, error) {
+	return d.Config.GetData(id)
+}
+
 func (d *DockerClient) ListStacks() ([]common.Resource, error) {
 	return d.Stack.List()
 }

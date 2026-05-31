@@ -7,7 +7,6 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-
 // FormatInspectorTitle generates the standard title string for inspectors
 // Format: Action(subject) [Mode] <Search>
 func FormatInspectorTitle(action, subject, mode, filter string, matchIndex, matchCount int) string {

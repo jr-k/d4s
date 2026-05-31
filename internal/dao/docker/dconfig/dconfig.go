@@ -119,6 +119,14 @@ func (m *Manager) Create(name string, data []byte) error {
 	return err
 }
 
+func (m *Manager) GetData(id string) ([]byte, error) {
+	cfg, _, err := m.cli.ConfigInspectWithRaw(m.ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return cfg.Spec.Data, nil
+}
+
 func (m *Manager) Update(id string, data []byte) error {
 	cfg, _, err := m.cli.ConfigInspectWithRaw(m.ctx, id)
 	if err != nil {

@@ -23,6 +23,7 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("s", "Services"),
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("x", "Decode"),
 		common.FormatSCHeader("a", "Add"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
@@ -42,6 +43,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'd':
 		app.InspectCurrentSelection()
+		return nil
+	case 'x':
+		Decode(app, v)
 		return nil
 	case 'a':
 		Create(app)
@@ -139,6 +143,31 @@ func Create(app common.AppController) {
 				}
 				app.RefreshCurrentView()
 			})
+		})
+	})
+}
+
+func Decode(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	subject := resolveConfigSubject(v, id)
+	inspector := inspect.NewTextInspector("Decode config", subject, fmt.Sprintf(" [%s]Decoding config...\n", styles.TagAccent), "data")
+	app.OpenInspector(inspector)
+
+	app.RunInBackground(func() {
+		data, err := app.GetDocker().GetConfigData(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				inspector.Viewer.Update(fmt.Sprintf("Error: %v", err), "text")
+			})
+			return
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			inspector.Viewer.Update(string(data), "env")
 		})
 	})
 }
