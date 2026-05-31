@@ -61,6 +61,7 @@ var (
 	ColorStatusOrange = tcell.NewRGBColor(255, 140, 3) // Orange
 	ColorStatusBlue = tcell.NewRGBColor(1, 123, 255)  // Blue (lighter)
 	ColorStatusPurple = tcell.NewRGBColor(103, 35, 186) // Purple
+	ColorStatusMagenta = tcell.NewRGBColor(255, 0, 255) // Magenta
 
 	ColorStatusRedDarkBg = tcell.NewRGBColor(46, 30, 30) // Red
 	ColorStatusGreenDarkBg = tcell.NewRGBColor(32, 46, 30)  // Green

@@ -50,7 +50,7 @@ func (cp ComposeProject) GetStatusColor() (tcell.Color, tcell.Color) {
 			if desired == 0 && running == 0 {
 				return styles.ColorStatusGray, styles.ColorBlack
 			} else if running < desired {
-				return styles.ColorStatusOrange, styles.ColorBlack
+				return styles.ColorStatusYellow, styles.ColorBlack
 			} else if running > desired {
 				return tcell.ColorMediumPurple, styles.ColorBlack
 			} else if desired > 0 {

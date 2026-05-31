@@ -232,13 +232,13 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 func UpAction(app common.AppController, v *view.ResourceView) {
 	app.PerformAction(func(id string) error {
 		return app.GetDocker().UpComposeProject(id)
-	}, "restarting", styles.ColorStatusYellow)
+	}, "restarting", styles.ColorStatusOrange)
 }
 
 func BuildAction(app common.AppController, v *view.ResourceView) {
 	app.PerformAction(func(id string) error {
 		return app.GetDocker().BuildComposeProject(id)
-	}, "building", styles.ColorStatusYellow)
+	}, "building", styles.ColorStatusMagenta)
 }
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
