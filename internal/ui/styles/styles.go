@@ -136,6 +136,7 @@ const (
 	TitleAliases    = "Aliases"
 	TitleSecrets    = "Secrets"
 	TitleConfigs    = "Configs"
+	TitleStacks     = "Stacks"
 )
 
 // invertColor inverts a tcell.Color by flipping its lightness while preserving hue and saturation.

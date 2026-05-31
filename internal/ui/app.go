@@ -27,6 +27,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/views/nodes"
 	"github.com/jr-k/d4s/internal/ui/views/configs"
 	"github.com/jr-k/d4s/internal/ui/views/secrets"
+	"github.com/jr-k/d4s/internal/ui/views/stacks"
 	"github.com/jr-k/d4s/internal/ui/views/services"
 	"github.com/jr-k/d4s/internal/ui/views/volumes"
 	"github.com/jr-k/d4s/internal/updater"
@@ -341,6 +342,17 @@ func (a *App) initUI() {
 	}
 	a.Views[styles.TitleSecrets] = vSecrets
 
+	// Stacks
+	vStacks := view.NewResourceView(a, styles.TitleStacks)
+	vStacks.ShortcutsFunc = stacks.GetShortcuts
+	vStacks.FetchFunc = stacks.Fetch
+	vStacks.InspectFunc = stacks.Inspect
+	vStacks.Headers = stacks.Headers
+	vStacks.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return stacks.InputHandler(vStacks, event)
+	}
+	a.Views[styles.TitleStacks] = vStacks
+
 	// Configs
 	vConfigs := view.NewResourceView(a, styles.TitleConfigs)
 	vConfigs.ShortcutsFunc = configs.GetShortcuts
@@ -559,6 +571,8 @@ func (a *App) resolveDefaultView() string {
 		return styles.TitleSecrets
 	case "configs", "config":
 		return styles.TitleConfigs
+	case "stacks", "stack":
+		return styles.TitleStacks
 	default:
 		return styles.TitleContainers
 	}

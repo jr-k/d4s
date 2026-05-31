@@ -115,6 +115,7 @@ var availableCommands = []string{
 	"nodes",
 	"compose",
 	"configs",
+	"stacks",
 	"help",
 	"aliases",
 	"q",
@@ -126,6 +127,7 @@ var availableCommands = []string{
 	"no",
 	"p",
 	"a",
+	"k",
 }
 
 // findBestSuggestion finds the best matching command for autocompletion

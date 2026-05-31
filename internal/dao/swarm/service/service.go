@@ -33,6 +33,7 @@ type Service struct {
 	Image    string
 	Mode     string
 	Replicas string
+	Stack    string
 	Ports    string
 	Created  string
 	Updated  string
@@ -161,6 +162,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 			Image:    imageName,
 			Mode:     mode,
 			Replicas: replicas,
+			Stack:    s.Spec.Labels["com.docker.stack.namespace"],
 			Ports:    ports,
 			Created:  common.FormatTime(s.CreatedAt.Unix()),
 			Updated:  common.FormatTime(s.UpdatedAt.Unix()),

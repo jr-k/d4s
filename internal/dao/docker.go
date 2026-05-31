@@ -27,6 +27,7 @@ import (
 	"github.com/jr-k/d4s/internal/dao/docker/network"
 	"github.com/jr-k/d4s/internal/dao/docker/dconfig"
 	"github.com/jr-k/d4s/internal/dao/docker/secret"
+	"github.com/jr-k/d4s/internal/dao/docker/stack"
 	"github.com/jr-k/d4s/internal/dao/docker/volume"
 	"github.com/jr-k/d4s/internal/dao/swarm/node"
 	"github.com/jr-k/d4s/internal/dao/swarm/service"
@@ -43,6 +44,7 @@ type Service = service.Service
 type Node = node.Node
 type Secret = secret.Secret
 type Config = dconfig.Config
+type Stack = stack.Stack
 type ComposeProject = compose.ComposeProject
 
 // Cached container info for instant scoped queries (drill-down)
@@ -72,6 +74,7 @@ type DockerClient struct {
 	Node      *node.Manager
 	Secret    *secret.Manager
 	Config    *dconfig.Manager
+	Stack     *stack.Manager
 	Compose   *compose.Manager
 
 	// Resource cache for fast scoped queries and stale-while-revalidate
@@ -113,6 +116,7 @@ func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContex
 		Node:             node.NewManager(cli, ctx),
 		Secret:           secret.NewManager(cli, ctx),
 		Config:           dconfig.NewManager(cli, ctx),
+		Stack:            stack.NewManager(cli, ctx),
 		Compose:          compose.NewManager(cli, ctx),
 		containerInfoMap: make(map[string]containerInfoCache),
 		refreshing:       make(map[string]bool),
@@ -565,6 +569,22 @@ func (d *DockerClient) CreateConfig(name string, data []byte) error {
 
 func (d *DockerClient) UpdateConfig(id string, data []byte) error {
 	return d.Config.Update(id, data)
+}
+
+func (d *DockerClient) ListStacks() ([]common.Resource, error) {
+	return d.Stack.List()
+}
+
+func (d *DockerClient) RemoveStack(name string) error {
+	return d.Stack.Remove(name)
+}
+
+func (d *DockerClient) DeployStack(name string, composeFile string) error {
+	return d.Stack.Deploy(name, composeFile)
+}
+
+func (d *DockerClient) StackPS(name string) (string, error) {
+	return d.Stack.PS(name)
 }
 
 func (d *DockerClient) StopComposeProject(projectName string) error {

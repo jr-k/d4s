@@ -120,6 +120,19 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		return nil, err
 	}
 
+	// Filter by Stack Scope
+	if scope != nil && scope.Type == "stack" {
+		var filtered []dao.Resource
+		for _, s := range services {
+			if svc, ok := s.(dao.Service); ok {
+				if svc.Stack == scope.Value {
+					filtered = append(filtered, s)
+				}
+			}
+		}
+		return filtered, nil
+	}
+
 	// Filter by Node Scope
 	if scope != nil && scope.Type == "node" {
 		nodeID := scope.Value

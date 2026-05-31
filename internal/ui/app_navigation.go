@@ -43,6 +43,8 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleSecrets)
 	case "f", "cfg", "config", "configs":
 		switchToRoot(styles.TitleConfigs)
+	case "k", "st", "stack", "stacks":
+		switchToRoot(styles.TitleStacks)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:
