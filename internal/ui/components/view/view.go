@@ -517,13 +517,21 @@ func (v *ResourceView) Refilter() {
 		valI := rowI[v.SortCol]
 		valJ := rowJ[v.SortCol]
 
-		// Try numeric/size sort
-		less := common.CompareValues(valI, valJ)
+		lessIJ := common.CompareValues(valI, valJ)
+		lessJI := common.CompareValues(valJ, valI)
 
-		if v.SortAsc {
-			return less
+		if lessIJ != lessJI {
+			if v.SortAsc {
+				return lessIJ
+			}
+			return lessJI
 		}
-		return !less
+
+		// Tiebreaker: sort by ID (column 0) ASC for stable ordering
+		if len(rowI) > 0 && len(rowJ) > 0 {
+			return common.CompareValues(rowI[0], rowJ[0])
+		}
+		return i < j
 	})
 
 	v.Data = filtered // Update view data with sorted/filtered list
