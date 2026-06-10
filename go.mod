@@ -11,6 +11,8 @@ require (
 	github.com/guptarohit/asciigraph v0.7.3
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/rivo/tview v0.42.0
+	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/crypto v0.53.0
 	golang.org/x/net v0.55.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -21,6 +23,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect
@@ -31,6 +34,7 @@ require (
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/moby/api v1.52.0 // indirect
 	github.com/moby/moby/client v0.2.1 // indirect

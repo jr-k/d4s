@@ -4,13 +4,57 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jr-k/d4s/internal/secrets"
 )
 
 const socatImage = "alpine/socat"
+
+// sshAuth holds per-context ssh authentication settings resolved
+// from the OS keychain.
+type sshAuth struct {
+	extraArgs []string
+	env       []string
+	batchMode bool
+}
+
+func resolveSSHAuth(contextName string) sshAuth {
+	auth := sshAuth{batchMode: true}
+	creds, err := secrets.Load(contextName)
+	if err != nil || creds == nil {
+		return auth
+	}
+	auth.extraArgs = creds.SSHArgs()
+	if creds.HasSecret() {
+		// BatchMode disables askpass, so it must be off when a stored
+		// secret has to be served through SSH_ASKPASS.
+		auth.batchMode = false
+		auth.env = append(os.Environ(), secrets.AskpassEnv(contextName)...)
+	}
+	return auth
+}
+
+func (a sshAuth) baseArgs() []string {
+	args := []string{
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=10",
+	}
+	if a.batchMode {
+		args = append(args, "-o", "BatchMode=yes")
+	}
+	return append(args, a.extraArgs...)
+}
+
+func (a sshAuth) apply(cmd *exec.Cmd) {
+	if a.env != nil {
+		cmd.Env = a.env
+	}
+}
 
 type Tunnel struct {
 	// direct mode (ssh -N -L): persistent ssh process
@@ -32,14 +76,15 @@ type Tunnel struct {
 // plain ssh -L tunnel to 127.0.0.1:hostPort is used.
 // Otherwise (overlay networks, unpublished ports), each connection is piped
 // through a socat process running inside the container's network namespace.
-func NewTunnel(sshHost string, localPort uint16, containerID string, containerPort, hostPort uint16) (*Tunnel, error) {
+func NewTunnel(contextName, sshHost string, localPort uint16, containerID string, containerPort, hostPort uint16) (*Tunnel, error) {
+	auth := resolveSSHAuth(contextName)
 	if hostPort > 0 {
-		return newDirectTunnel(sshHost, localPort, hostPort)
+		return newDirectTunnel(auth, sshHost, localPort, hostPort)
 	}
-	return newNetnsTunnel(sshHost, localPort, containerID, containerPort)
+	return newNetnsTunnel(auth, sshHost, localPort, containerID, containerPort)
 }
 
-func newDirectTunnel(sshHost string, localPort, hostPort uint16) (*Tunnel, error) {
+func newDirectTunnel(auth sshAuth, sshHost string, localPort, hostPort uint16) (*Tunnel, error) {
 	user, addr := parseSSHHost(sshHost)
 	host, port := splitHostPort(addr)
 
@@ -56,16 +101,15 @@ func newDirectTunnel(sshHost string, localPort, hostPort uint16) (*Tunnel, error
 		"-N",
 		"-L", localBind,
 		"-l", user,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=10",
 		"-o", "ExitOnForwardFailure=yes",
-		"-o", "BatchMode=yes",
 		"-p", port,
-		host,
 	}
+	args = append(args, auth.baseArgs()...)
+	args = append(args, host)
 
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin = nil
+	auth.apply(cmd)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -114,11 +158,11 @@ func newDirectTunnel(sshHost string, localPort, hostPort uint16) (*Tunnel, error
 	return nil, fmt.Errorf("tunnel did not become ready within 5s")
 }
 
-func newNetnsTunnel(sshHost string, localPort uint16, containerID string, containerPort uint16) (*Tunnel, error) {
+func newNetnsTunnel(auth sshAuth, sshHost string, localPort uint16, containerID string, containerPort uint16) (*Tunnel, error) {
 	user, addr := parseSSHHost(sshHost)
 	host, port := splitHostPort(addr)
 
-	if err := ensureSocatImage(user, host, port); err != nil {
+	if err := ensureSocatImage(auth, user, host, port); err != nil {
 		return nil, err
 	}
 
@@ -138,38 +182,38 @@ func newNetnsTunnel(sshHost string, localPort uint16, containerID string, contai
 		containerID, socatImage, containerPort,
 	)
 
-	go t.acceptLoop(user, host, port, remoteCmd)
+	go t.acceptLoop(auth, user, host, port, remoteCmd)
 
 	return t, nil
 }
 
-func (t *Tunnel) acceptLoop(user, host, port, remoteCmd string) {
+func (t *Tunnel) acceptLoop(auth sshAuth, user, host, port, remoteCmd string) {
 	for {
 		conn, err := t.listener.Accept()
 		if err != nil {
 			return
 		}
-		go t.handleConn(conn, user, host, port, remoteCmd)
+		go t.handleConn(auth, conn, user, host, port, remoteCmd)
 	}
 }
 
-func (t *Tunnel) handleConn(conn net.Conn, user, host, port, remoteCmd string) {
+func (t *Tunnel) handleConn(auth sshAuth, conn net.Conn, user, host, port, remoteCmd string) {
 	defer conn.Close()
 
-	cmd := exec.Command("ssh",
+	args := []string{
 		"-l", user,
 		"-p", port,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=10",
-		"-o", "BatchMode=yes",
 		"-o", "ControlMaster=auto",
 		"-o", "ControlPath=/tmp/d4s-ssh-%r@%h-%p",
 		"-o", "ControlPersist=60s",
-		host,
-		remoteCmd,
-	)
+	}
+	args = append(args, auth.baseArgs()...)
+	args = append(args, host, remoteCmd)
+
+	cmd := exec.Command("ssh", args...)
 	cmd.Stdin = conn
 	cmd.Stdout = conn
+	auth.apply(cmd)
 
 	t.mu.Lock()
 	if t.closed {
@@ -186,20 +230,20 @@ func (t *Tunnel) handleConn(conn net.Conn, user, host, port, remoteCmd string) {
 	t.mu.Unlock()
 }
 
-func ensureSocatImage(user, host, port string) error {
+func ensureSocatImage(auth sshAuth, user, host, port string) error {
 	check := fmt.Sprintf(
 		"docker image inspect %s >/dev/null 2>&1 || docker pull %s >/dev/null 2>&1",
 		socatImage, socatImage,
 	)
-	cmd := exec.Command("ssh",
+	args := []string{
 		"-l", user,
 		"-p", port,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=10",
-		"-o", "BatchMode=yes",
-		host,
-		check,
-	)
+	}
+	args = append(args, auth.baseArgs()...)
+	args = append(args, host, check)
+
+	cmd := exec.Command("ssh", args...)
+	auth.apply(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

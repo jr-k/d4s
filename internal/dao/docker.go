@@ -33,6 +33,7 @@ import (
 	"github.com/jr-k/d4s/internal/dao/docker/volume"
 	"github.com/jr-k/d4s/internal/dao/swarm/node"
 	"github.com/jr-k/d4s/internal/dao/swarm/service"
+	"github.com/jr-k/d4s/internal/secrets"
 	"github.com/jr-k/d4s/internal/dao/swarm/task"
 )
 
@@ -244,7 +245,21 @@ func loadSpecificContext(targetCtx string, logger *log.Logger, baseOpts []client
 	}
 
 	logger.Printf("Using Host: %s", ep.Host)
-	helper, err := connhelper.GetConnectionHelper(ep.Host)
+
+	var helper *connhelper.ConnectionHelper
+	if strings.HasPrefix(ep.Host, "ssh://") {
+		creds, _ := secrets.Load(targetCtx)
+		if creds.HasSecret() {
+			// Spawned ssh processes (docker dial-stdio, tunnels) will query
+			// d4s itself via SSH_ASKPASS to obtain the stored secret.
+			secrets.ApplyAskpassEnv(targetCtx)
+		} else {
+			secrets.ApplyAskpassEnv("")
+		}
+		helper, err = connhelper.GetConnectionHelperWithSSHOpts(ep.Host, creds.SSHArgs())
+	} else {
+		helper, err = connhelper.GetConnectionHelper(ep.Host)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -617,8 +632,13 @@ func (d *DockerClient) InspectContext(name string) (string, error) {
 	return string(output), nil
 }
 
-func (d *DockerClient) RemoveContext(name string) error {
-	cmd := exec.Command("docker", "context", "rm", name)
+func (d *DockerClient) RemoveContext(name string, force bool) error {
+	args := []string{"context", "rm"}
+	if force {
+		args = append(args, "-f")
+	}
+	args = append(args, name)
+	cmd := exec.Command("docker", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error removing context: %v, output: %s", err, string(output))

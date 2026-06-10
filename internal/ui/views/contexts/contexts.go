@@ -2,10 +2,12 @@ package contexts
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/secrets"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -153,7 +155,19 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 }
 
 func Remove(id string, force bool, app common.AppController) error {
-	return app.GetDocker().RemoveContext(id)
+	wasCurrent := app.GetDocker().ContextName == id
+
+	if err := app.GetDocker().RemoveContext(id, force); err != nil {
+		return err
+	}
+	secrets.Delete(id)
+
+	if wasCurrent {
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetDefaultContext("default")
+		})
+	}
+	return nil
 }
 
 func Create(app common.AppController) {
@@ -236,12 +250,36 @@ func Edit(app common.AppController, v *view.ResourceView) {
 }
 
 func CreateSSH(app common.AppController) {
+	items := []dialogs.PickerItem{
+		{Label: "SSH Key", Description: "authenticate with a private key (recommended)", Value: secrets.AuthTypeKey},
+		{Label: "Password", Description: "authenticate with a password", Value: secrets.AuthTypePassword},
+	}
+
+	dialogs.ShowPicker(app, "Authentication Method", items, func(authType string) {
+		showSSHForm(app, authType)
+	})
+}
+
+func showSSHForm(app common.AppController, authType string) {
 	fields := []dialogs.FormField{
 		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput, Placeholder: "prod-server"},
 		{Name: "host", Label: "Host (user@ip)", Type: dialogs.FieldTypeInput, Placeholder: "root@192.168.1.100"},
-		{Name: "key", Label: "SSH Key (optional)", Type: dialogs.FieldTypeInput, Placeholder: "~/.ssh/id_ed25519"},
-		{Name: "socket", Label: "Docker Socket", Type: dialogs.FieldTypeInput, Default: "/var/run/docker.sock"},
 	}
+
+	if authType == secrets.AuthTypeKey {
+		fields = append(fields,
+			dialogs.FormField{Name: "key", Label: "SSH Key", Type: dialogs.FieldTypeInput, Placeholder: "~/.ssh/id_ed25519"},
+			dialogs.FormField{Name: "passphrase", Label: "Passphrase (optional)", Type: dialogs.FieldTypeInput, Secret: true},
+		)
+	} else {
+		fields = append(fields,
+			dialogs.FormField{Name: "password", Label: "Password", Type: dialogs.FieldTypeInput, Secret: true},
+		)
+	}
+
+	fields = append(fields,
+		dialogs.FormField{Name: "socket", Label: "Docker Socket", Type: dialogs.FieldTypeInput, Default: "/var/run/docker.sock"},
+	)
 
 	dialogs.ShowFormWithDescription(app, "Add Remote Context (SSH)", "Creates a Docker context using SSH tunnel", fields, func(result dialogs.FormResult) {
 		name := strings.TrimSpace(result["name"])
@@ -256,6 +294,17 @@ func CreateSSH(app common.AppController) {
 			app.SetFlashError("host is required")
 			return
 		}
+		if authType == secrets.AuthTypePassword && result["password"] == "" {
+			app.SetFlashError("password is required")
+			return
+		}
+
+		creds := secrets.SSHCredentials{
+			AuthType:   authType,
+			KeyPath:    expandHome(strings.TrimSpace(result["key"])),
+			Passphrase: result["passphrase"],
+			Password:   result["password"],
+		}
 
 		sshURL := fmt.Sprintf("ssh://%s", host)
 		if socket != "" && socket != "/var/run/docker.sock" {
@@ -266,6 +315,13 @@ func CreateSSH(app common.AppController) {
 
 		app.RunInBackground(func() {
 			err := app.GetDocker().CreateContext(name, fmt.Sprintf("SSH remote: %s", host), sshURL)
+			if err == nil {
+				if kerr := secrets.Save(name, creds); kerr != nil {
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						app.AppendFlashError(fmt.Sprintf("context created but credentials not saved: %v", kerr))
+					})
+				}
+			}
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
 					app.AppendFlashError(fmt.Sprintf("failed to create context: %v", err))
@@ -276,6 +332,15 @@ func CreateSSH(app common.AppController) {
 			})
 		})
 	})
+}
+
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + path[1:]
+		}
+	}
+	return path
 }
 
 func Inspect(app common.AppController, id string) {

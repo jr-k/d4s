@@ -13,6 +13,7 @@ import (
 
 	"github.com/jr-k/d4s/internal/buildinfo"
 	"github.com/jr-k/d4s/internal/config"
+	"github.com/jr-k/d4s/internal/secrets"
 	"github.com/jr-k/d4s/internal/ui"
 	"github.com/jr-k/d4s/internal/ui/common"
 )
@@ -43,6 +44,11 @@ func printColored(format string, a ...interface{}) {
 }
 
 func main() {
+	// SSH_ASKPASS mode: ssh invokes d4s to retrieve stored credentials
+	if secrets.RunAskpassIfRequested() {
+		return
+	}
+
 	// Version flags
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.BoolVar(showVersion, "v", false, "Print version and exit (shorthand)")

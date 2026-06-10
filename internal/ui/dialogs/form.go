@@ -23,6 +23,7 @@ type FormField struct {
 	Type        FieldType
 	Default     string
 	Placeholder string
+	Secret      bool
 }
 
 type FormResult map[string]string
@@ -99,6 +100,9 @@ func ShowFormWithDescription(app common.AppController, title, description string
 				SetPlaceholder(f.Placeholder).
 				SetPlaceholderStyle(tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorBlack)).
 				SetText(f.Default)
+			if f.Secret {
+				input.SetMaskCharacter('*')
+			}
 			input.SetBackgroundColor(styles.ColorBlack)
 
 			fw.widget = input

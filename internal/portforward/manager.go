@@ -107,7 +107,7 @@ func (m *Manager) Add(pf *PortForward) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	tunnel, err := NewTunnel(pf.SSHHost, pf.LocalPort, pf.ContainerID, pf.ContainerPort, pf.HostPort)
+	tunnel, err := NewTunnel(pf.ContextName, pf.SSHHost, pf.LocalPort, pf.ContainerID, pf.ContainerPort, pf.HostPort)
 	if err != nil {
 		return fmt.Errorf("tunnel creation failed: %w", err)
 	}
@@ -142,7 +142,7 @@ func (m *Manager) Start(id string) error {
 		return fmt.Errorf("port-forward %s not found", id)
 	}
 
-	tunnel, err := NewTunnel(pf.SSHHost, pf.LocalPort, pf.ContainerID, pf.ContainerPort, pf.HostPort)
+	tunnel, err := NewTunnel(pf.ContextName, pf.SSHHost, pf.LocalPort, pf.ContainerID, pf.ContainerPort, pf.HostPort)
 	if err != nil {
 		return fmt.Errorf("tunnel creation failed: %w", err)
 	}
