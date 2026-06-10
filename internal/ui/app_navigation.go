@@ -41,7 +41,7 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleAliases)
 	case "x", "sec", "secret", "secrets":
 		switchToRoot(styles.TitleSecrets)
-	case "f", "cfg", "config", "configs":
+	case "m", "cm", "configmap", "configmaps":
 		switchToRoot(styles.TitleConfigs)
 	case "k", "st", "stack", "stacks":
 		switchToRoot(styles.TitleStacks)
@@ -51,6 +51,8 @@ func (a *App) ExecuteCmd(cmd string) {
 		switchToRoot(styles.TitleContexts)
 	case "g", "pl", "plugin", "plugins":
 		switchToRoot(styles.TitlePlugins)
+	case "w", "pf", "portforward", "portforwards":
+		switchToRoot(styles.TitlePortForwards)
 	case "h", "help", "?":
 		a.Pages.AddPage("help", a.Help, true, true)
 	default:

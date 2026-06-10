@@ -22,7 +22,7 @@ func ShowResultModal(app common.AppController, action string, successCount int, 
 		SetScrollable(true)
 	tv.SetBackgroundColor(styles.ColorBlack)
 	
-	tv.SetBorder(true).SetTitle(" Action Report ").SetTitleColor(styles.ColorError).SetBackgroundColor(styles.ColorBlack)
+	tv.SetBorder(true).SetTitle(fmt.Sprintf("[%s::b]<Action Report>[-::-]", styles.TagCyan)).SetBorderColor(styles.ColorMenuKey).SetBackgroundColor(styles.ColorBlack)
 	
 	// Modal Layout
 	modalWidth := 60

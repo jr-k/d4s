@@ -64,7 +64,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 	inputLabel.SetBackgroundColor(styles.ColorBlack)
 
 	input := tview.NewInputField().
-		SetFieldBackgroundColor(styles.ColorSelectBg).
+		SetFieldBackgroundColor(styles.ColorBlack).
 		SetFieldTextColor(tcell.ColorRed)
 	input.SetBackgroundColor(styles.ColorBlack)
 
@@ -104,8 +104,7 @@ func ShowConfirmation(app common.AppController, actionName, item string, onConfi
 		AddItem(form, 4, 0, true)
 
 	content.SetBorder(true).
-		SetTitle(" Are you sure? ").
-		SetTitleColor(tcell.ColorRed).
+		SetTitle(fmt.Sprintf("[%s::b]<Are you sure?>[-::-]", styles.TagCyan)).
 		SetBorderColor(tcell.ColorRed).
 		SetBackgroundColor(styles.ColorBlack)
 

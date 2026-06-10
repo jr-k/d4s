@@ -29,11 +29,11 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{fmt.Sprintf("[%s]:c[-]        Containers", k), fmt.Sprintf("[%s]:i[-]        Images", k)},
 		{fmt.Sprintf("[%s]:v[-]        Volumes", k), fmt.Sprintf("[%s]:n[-]        Networks", k)},
 		{fmt.Sprintf("[%s]:p[-]        Compose", k), fmt.Sprintf("[%s]:o[-]        Contexts", k)},
-		{fmt.Sprintf("[%s]:g[-]        Plugins", k), ""},
+		{fmt.Sprintf("[%s]:g[-]        Plugins", k), fmt.Sprintf("[%s]:pf[-]       PortForwards", k)},
 		{"", ""},
 		{fmt.Sprintf("[%s::b]SWARM", a), ""},
 		{fmt.Sprintf("[%s]:d[-]        Nodes", k), fmt.Sprintf("[%s]:t[-]        Tasks", k)},
-		{fmt.Sprintf("[%s]:k[-]        Stacks", k), fmt.Sprintf("[%s]:f[-]        Configs", k)},
+		{fmt.Sprintf("[%s]:k[-]        Stacks", k), fmt.Sprintf("[%s]:m[-]        ConfigMaps", k)},
 		{fmt.Sprintf("[%s]:s[-]        Services", k), fmt.Sprintf("[%s]:x[-]        Secrets", k)},
 		{"", ""},
 		{fmt.Sprintf("[%s::b]NAVIGATION", a), ""},
@@ -66,9 +66,11 @@ func NewHelpView(app common.AppController) tview.Primitive {
 	}
 
 	helpBox := tview.NewFrame(helpTable).
-		SetBorders(1, 1, 1, 1, 4, 4).
-		AddText(" Help ", true, tview.AlignCenter, styles.ColorTitle)
-	helpBox.SetBorder(true).SetBorderColor(styles.ColorTitle).SetBackgroundColor(styles.ColorBlack)
+		SetBorders(1, 1, 1, 1, 4, 4)
+	helpBox.SetBorder(true).
+		SetTitle(fmt.Sprintf("[%s::b]<Help>[-::-]", styles.TagCyan)).
+		SetBorderColor(styles.ColorMenuKey).
+		SetBackgroundColor(styles.ColorBlack)
 
 	// Center Modal
 	helpFlex := tview.NewFlex().

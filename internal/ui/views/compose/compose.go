@@ -10,6 +10,7 @@ import (
 	"github.com/jr-k/d4s/internal/dao"
 	daoCommon "github.com/jr-k/d4s/internal/dao/common"
 	daoCompose "github.com/jr-k/d4s/internal/dao/compose"
+	"github.com/jr-k/d4s/internal/portforward"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -80,10 +81,12 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("enter", "Containers"),
 		common.FormatSCHeader("l", "Logs"),
+		common.FormatSCHeader("f", "Show PortForward"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("r", "(Re)Start"),
 		common.FormatSCHeader("b", "Build"),
+		common.FormatSCHeader("shift-f", "Port-Forward"),
 		common.FormatSCHeader("shift-r", "(Re)Deploy"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 		common.FormatSCHeader("ctrl-k", "Stop"),
@@ -103,6 +106,12 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	switch event.Rune() {
 	case 'l':
 		Logs(app, v)
+		return nil
+	case 'f':
+		ShowPortForwards(app, v)
+		return nil
+	case 'F':
+		PortForwardAction(app, v)
 		return nil
 	case 'd':
 		app.InspectCurrentSelection()
@@ -299,4 +308,156 @@ func Stop(app common.AppController, id string) error {
 
 func Remove(id string, force bool, app common.AppController) error {
 	return app.GetDocker().DownComposeProject(id)
+}
+
+func ShowPortForwards(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	app.SetActiveScope(&common.Scope{
+		Type:       "compose",
+		Value:      id,
+		Label:      id,
+		OriginView: styles.TitleCompose,
+	})
+	app.SwitchTo(styles.TitlePortForwards)
+}
+
+func PortForwardAction(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	pickerTitle := fmt.Sprintf("Port-Forward: %s", id)
+	dialogs.ShowPickerLoading(app, pickerTitle)
+
+	app.RunInBackground(func() {
+		containers, err := app.GetDocker().ListContainers()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				app.GetPages().RemovePage("picker")
+				app.AppendFlashError(fmt.Sprintf("failed to list containers: %v", err))
+			})
+			return
+		}
+
+		var items []dialogs.PickerItem
+		for _, r := range containers {
+			if c, ok := r.(dao.Container); ok {
+				if c.ProjectName == id && c.Ports != "" {
+					items = append(items, dialogs.PickerItem{
+						Label:       c.Names,
+						Description: c.Ports,
+						Value:       c.ID,
+					})
+				}
+			}
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			if len(items) == 0 {
+				app.GetPages().RemovePage("picker")
+				app.AppendFlashError("no containers with exposed ports in this project")
+				return
+			}
+
+			dialogs.ShowPicker(app, pickerTitle, items, func(containerID string) {
+				var name, portsStr string
+				for _, r := range containers {
+					if c, ok := r.(dao.Container); ok {
+						if c.ID == containerID {
+							name = c.Names
+							portsStr = c.Ports
+							break
+						}
+					}
+				}
+
+				portInfos := parsePortsString(portsStr)
+				if len(portInfos) == 0 {
+					app.AppendFlashError("no ports found")
+					return
+				}
+
+				dialogs.ShowPortForwardDialog(app, containerID, name, portInfos, func(result dialogs.PortForwardResult) {
+					app.SetFlashPending(fmt.Sprintf("forwarding %s:%d...", result.Address, result.LocalPort))
+					app.RunInBackground(func() {
+						containerIP, err := app.GetDocker().GetContainerIP(containerID)
+						if err != nil {
+							app.GetTviewApp().QueueUpdateDraw(func() {
+								app.AppendFlashError(fmt.Sprintf("failed to get container IP: %v", err))
+							})
+							return
+						}
+
+						pf := &portforward.PortForward{
+							ContextName:   app.GetDocker().ContextName,
+							SSHHost:       app.GetDocker().GetSSHHost(),
+							ContainerID:   containerID,
+							ContainerName: name,
+							ContainerIP:   containerIP,
+							ContainerPort: result.ContainerPort,
+							HostPort:      result.HostPort,
+							LocalPort:     result.LocalPort,
+						}
+
+						err = app.GetPortForwardManager().Add(pf)
+						app.GetTviewApp().QueueUpdateDraw(func() {
+							if err != nil {
+								app.AppendFlashError(fmt.Sprintf("port-forward failed: %v", err))
+							} else {
+								app.AppendFlashSuccess(fmt.Sprintf("forwarding %s:%d -> container:%d", result.Address, result.LocalPort, result.ContainerPort))
+								app.RefreshCurrentView()
+							}
+						})
+					})
+				})
+			})
+		})
+	})
+}
+
+func parsePortsString(ports string) []dialogs.PortInfo {
+	var result []dialogs.PortInfo
+	seen := make(map[uint16]bool)
+	for _, part := range strings.Split(ports, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		parts := strings.SplitN(part, "->", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		var cp int
+		fmt.Sscanf(parts[1], "%d", &cp)
+		if cp <= 0 || seen[uint16(cp)] {
+			continue
+		}
+		seen[uint16(cp)] = true
+		var hp int
+		hostPart := parts[0]
+		if idx := strings.LastIndex(hostPart, ":"); idx >= 0 {
+			fmt.Sscanf(hostPart[idx+1:], "%d", &hp)
+		}
+		result = append(result, dialogs.PortInfo{
+			ContainerPort: uint16(cp),
+			HostPort:      uint16(hp),
+			Protocol:      "tcp",
+		})
+	}
+	return result
 }

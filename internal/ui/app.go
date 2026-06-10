@@ -12,6 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/config"
 	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/portforward"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/command"
 	"github.com/jr-k/d4s/internal/ui/components/footer"
@@ -29,6 +30,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/views/secrets"
 	"github.com/jr-k/d4s/internal/ui/views/contexts"
 	"github.com/jr-k/d4s/internal/ui/views/plugins"
+	"github.com/jr-k/d4s/internal/ui/views/portforwards"
 	"github.com/jr-k/d4s/internal/ui/views/stacks"
 	"github.com/jr-k/d4s/internal/ui/views/tasks"
 	"github.com/jr-k/d4s/internal/ui/views/services"
@@ -38,10 +40,11 @@ import (
 )
 
 type App struct {
-	TviewApp *tview.Application
-	Screen   tcell.Screen
-	Docker   *dao.DockerClient
-	Cfg      *config.Config
+	TviewApp        *tview.Application
+	Screen          tcell.Screen
+	Docker          *dao.DockerClient
+	Cfg             *config.Config
+	PortForwards    *portforward.Manager
 
 	// Components
 	Layout  *tview.Flex
@@ -73,6 +76,8 @@ type App struct {
 
 	appendTimer *time.Timer
 	appendMx    sync.Mutex
+
+	startupError string
 }
 
 // Ensure App implements AppController interface
@@ -110,9 +115,14 @@ func NewApp(contextName string, cfg *config.Config) (*App, error) {
 		styles.InvertColors()
 	}
 
-	docker, err := dao.NewDockerClient(contextName, cfg.D4S.GetAPIServerTimeout(), cfg.D4S.DefaultContext)
-	if err != nil {
-		return nil, fmt.Errorf("failed to init docker client: %w", err)
+	docker, dockerErr := dao.NewDockerClient(contextName, cfg.D4S.GetAPIServerTimeout(), cfg.D4S.DefaultContext)
+	if dockerErr != nil {
+		// Fallback to default/local context so the app can start
+		var fallbackErr error
+		docker, fallbackErr = dao.NewDockerClient("", cfg.D4S.GetAPIServerTimeout(), "default")
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("failed to init docker client: %w (original error: %v)", fallbackErr, dockerErr)
+		}
 	}
 
 	screen, err := tcell.NewScreen()
@@ -129,15 +139,21 @@ func NewApp(contextName string, cfg *config.Config) (*App, error) {
 	}
 
 	app := &App{
-		TviewApp: tviewApp,
-		Screen:   screen,
-		Docker:   docker,
-		Cfg:      cfg,
-		Views:    make(map[string]*view.ResourceView),
-		Pages:    tview.NewPages(),
+		TviewApp:     tviewApp,
+		Screen:       screen,
+		Docker:       docker,
+		Cfg:          cfg,
+		PortForwards: portforward.NewManager(),
+		Views:        make(map[string]*view.ResourceView),
+		Pages:        tview.NewPages(),
 	}
 
 	app.initUI()
+
+	if dockerErr != nil {
+		app.startupError = dockerErr.Error()
+	}
+
 	return app, nil
 }
 
@@ -148,6 +164,11 @@ func (a *App) Run() error {
 			fmt.Printf("Application crashed: %v\nStack trace:\n%s\n", r, string(debug.Stack()))
 		}
 	}()
+
+	// Show startup error if remote context failed
+	if a.startupError != "" {
+		a.AppendFlashError(fmt.Sprintf("context failed (fallback to local): %s", a.startupError))
+	}
 
 	// Start auto-refresh
 	a.StartAutoRefresh()
@@ -403,6 +424,16 @@ func (a *App) initUI() {
 	}
 	a.Views[styles.TitlePlugins] = vPlugins
 
+	// PortForwards
+	vPortForwards := view.NewResourceView(a, styles.TitlePortForwards)
+	vPortForwards.ShortcutsFunc = portforwards.GetShortcuts
+	vPortForwards.FetchFunc = portforwards.Fetch
+	vPortForwards.Headers = portforwards.Headers
+	vPortForwards.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
+		return portforwards.InputHandler(vPortForwards, event)
+	}
+	a.Views[styles.TitlePortForwards] = vPortForwards
+
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)
 	}
@@ -455,7 +486,7 @@ func (a *App) initUI() {
 		// Don't intercept global keys if a modal/dialog is open
 		frontPage, _ := a.Pages.GetFrontPage()
 		switch frontPage {
-		case "input", "confirm", "form", "picker", "env_editor", "textview", "result":
+		case "input", "confirm", "form", "picker", "env_editor", "textview", "result", "portforward":
 			return event
 		}
 
@@ -576,6 +607,10 @@ func (a *App) GetScreen() tcell.Screen {
 
 func (a *App) GetDocker() *dao.DockerClient {
 	return a.Docker
+}
+
+func (a *App) GetPortForwardManager() *portforward.Manager {
+	return a.PortForwards
 }
 
 func (a *App) GetConfig() *config.Config {

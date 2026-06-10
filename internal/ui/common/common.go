@@ -8,6 +8,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/config"
 	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/portforward"
 	"github.com/jr-k/d4s/internal/ui/styles"
 	"github.com/rivo/tview"
 )
@@ -76,6 +77,9 @@ type AppController interface {
 
 	// Context Management
 	SetDefaultContext(contextName string)
+
+	// Port-Forward Management
+	GetPortForwardManager() *portforward.Manager
 
 	// Refactoring: Auto Refresh Control
 	StartAutoRefresh()

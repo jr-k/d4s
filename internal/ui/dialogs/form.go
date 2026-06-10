@@ -37,10 +37,10 @@ func ShowFormWithDescription(app common.AppController, title, description string
 	}
 
 	dialogWidth := 50
-	dialogHeight := 4 + len(fields)*2
+	dialogHeight := 5 + len(fields)
 	for _, f := range fields {
 		if f.Type == FieldTypeTextArea {
-			dialogHeight += 6
+			dialogHeight += 7
 		}
 	}
 
@@ -64,6 +64,14 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		return tview.NewBox().SetBackgroundColor(styles.ColorBlack)
 	}
 
+	// Compute max label width
+	maxLabelLen := 0
+	for _, f := range fields {
+		if len(f.Label)+1 > maxLabelLen {
+			maxLabelLen = len(f.Label) + 1
+		}
+	}
+
 	// Create form rows
 	formRows := tview.NewFlex().SetDirection(tview.FlexRow)
 
@@ -75,7 +83,7 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		label := tview.NewTextView().
 			SetDynamicColors(true).
 			SetText(f.Label + ":").
-			SetTextAlign(tview.AlignRight)
+			SetTextAlign(tview.AlignLeft)
 		label.SetBackgroundColor(styles.ColorBlack)
 
 		fw := fieldWidget{
@@ -86,10 +94,11 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		switch f.Type {
 		case FieldTypeInput:
 			input := tview.NewInputField().
-				SetFieldBackgroundColor(styles.ColorSelectBg).
+				SetFieldBackgroundColor(styles.ColorBlack).
 				SetFieldTextColor(tcell.ColorWhite).
-				SetText(f.Default).
-				SetPlaceholder(f.Placeholder)
+				SetPlaceholder(f.Placeholder).
+				SetPlaceholderStyle(tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorBlack)).
+				SetText(f.Default)
 			input.SetBackgroundColor(styles.ColorBlack)
 
 			fw.widget = input
@@ -135,8 +144,8 @@ func ShowFormWithDescription(app common.AppController, title, description string
 				SetText(f.Default, false).
 				SetPlaceholder(f.Placeholder)
 			ta.SetBackgroundColor(styles.ColorBlack)
-			ta.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(styles.ColorSelectBg))
-			ta.SetPlaceholderStyle(tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorSelectBg))
+			ta.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(styles.ColorBlack))
+			ta.SetPlaceholderStyle(tcell.StyleDefault.Foreground(styles.ColorDim).Background(styles.ColorBlack))
 
 			fw.widget = ta
 			fw.getValue = func() string {
@@ -151,8 +160,7 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		row := tview.NewFlex().
 			SetDirection(tview.FlexColumn).
 			AddItem(empty(), 1, 0, false).
-			AddItem(label, 12, 0, false).
-			AddItem(empty(), 1, 0, false).
+			AddItem(label, maxLabelLen+1, 0, false).
 			AddItem(fw.widget, 0, 1, false).
 			AddItem(empty(), 1, 0, false)
 
@@ -161,30 +169,23 @@ func ShowFormWithDescription(app common.AppController, title, description string
 			rowHeight = 8
 		}
 		formRows.AddItem(row, rowHeight, 0, false)
-		// Add spacing between fields
-		if i < len(fields)-1 {
-			formRows.AddItem(empty(), 1, 0, false)
-		}
 	}
 
 	// Confirm button
-	confirmBtn := tview.NewButton("Confirm").
-		SetLabelColor(styles.ColorBlack).
-		SetBackgroundColorActivated(styles.ColorAccent).
-		SetLabelColorActivated(styles.ColorBlack)
-	confirmBtn.SetBackgroundColor(styles.ColorSelectBg)
-	confirmBtn.SetStyle(tcell.StyleDefault.Foreground(styles.ColorBlack).Background(styles.ColorIdle))
+	confirmBtn := tview.NewButton("Confirm")
+	confirmBtn.SetStyle(tcell.StyleDefault.Foreground(styles.ColorFg).Background(styles.ColorBlack)).
+		SetActivatedStyle(tcell.StyleDefault.Foreground(styles.ColorBlack).Background(styles.ColorMenuKey))
+	confirmBtn.SetBackgroundColor(styles.ColorBlack)
 
 	confirmRow := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
 		AddItem(empty(), 0, 1, false).
 		AddItem(confirmBtn, 11, 0, false).
-		AddItem(empty(), 1, 0, false)
+		AddItem(empty(), 0, 1, false)
 
 	formRows.AddItem(empty(), 1, 0, false)
 	formRows.AddItem(confirmRow, 1, 0, false)
-	formRows.AddItem(empty(), 1, 0, false)
-	dialogHeight += 2
+	dialogHeight += 1
 
 	// focusable items = widgets + confirm button
 	focusCount := len(widgets) + 1
@@ -196,9 +197,9 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		AddItem(formRows, 0, 1, true)
 
 	content.SetBorder(true).
-		SetTitle(" " + title + " ").
+		SetTitle(fmt.Sprintf("[%s::b]<%s>[-::-]", styles.TagCyan, title)).
 		SetTitleColor(styles.ColorTitle).
-		SetBorderColor(styles.ColorTitle).
+		SetBorderColor(styles.ColorMenuKey).
 		SetBackgroundColor(styles.ColorBlack)
 
 	// Center on screen
@@ -284,7 +285,7 @@ func ShowFormWithDescription(app common.AppController, title, description string
 			input := fw.widget.(*tview.InputField)
 			input.SetDoneFunc(func(key tcell.Key) {
 				if key == tcell.KeyEnter {
-					submitForm()
+					moveFocus(1)
 				} else if key == tcell.KeyEsc {
 					closeModal()
 				}
@@ -322,7 +323,7 @@ func ShowFormWithDescription(app common.AppController, title, description string
 					return nil
 				}
 				if event.Key() == tcell.KeyEnter {
-					submitForm()
+					moveFocus(1)
 					return nil
 				}
 				return event

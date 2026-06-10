@@ -124,17 +124,13 @@ func (m *Manager) List() ([]common.Resource, error) {
 			continue
 		}
 
+		projects[proj].total++
 		switch c.State {
 		case "running":
 			projects[proj].running++
 		case "restarting":
 			projects[proj].restarting++
 		}
-	}
-
-	for name, data := range projects {
-		total := m.countServices(name, data.configPaths)
-		data.total = total - data.jobs
 	}
 
 	var res []common.Resource

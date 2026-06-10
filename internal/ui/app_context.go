@@ -35,9 +35,9 @@ func (a *App) ShowContextPicker() {
 			details = append(details, strings.Join(markers, ", "))
 		}
 		if ctx.DockerEndpoint != "" {
-			details = append(details, shortenContextText(ctx.DockerEndpoint, 30))
+			details = append(details, ctx.DockerEndpoint)
 		} else if ctx.Description != "" {
-			details = append(details, shortenContextText(ctx.Description, 30))
+			details = append(details, ctx.Description)
 		}
 
 		description := "Select as d4s default context"

@@ -1,6 +1,8 @@
 package dialogs
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/styles"
@@ -15,7 +17,7 @@ func ShowTextView(app common.AppController, title, content string) {
 		SetScrollable(true).
 		SetText(content)
 	
-	tv.SetBorder(true).SetTitle(title).SetTitleColor(styles.ColorTitle)
+	tv.SetBorder(true).SetTitle(fmt.Sprintf("[%s::b]<%s>[-::-]", styles.TagCyan, title)).SetBorderColor(styles.ColorMenuKey)
 	tv.SetBackgroundColor(styles.ColorBg)
 	
 	pages := app.GetPages()

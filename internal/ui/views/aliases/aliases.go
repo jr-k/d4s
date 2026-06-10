@@ -66,12 +66,13 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 		{Title: styles.TitleServices, Resource: "services", Group: "swarm", Shortcuts: []string{"s", "se", "svc", "service", "services"}},
 		{Title: styles.TitleNodes, Resource: "nodes", Group: "swarm", Shortcuts: []string{"d", "no", "node", "nodes"}},
 		{Title: styles.TitleSecrets, Resource: "secrets", Group: "swarm", Shortcuts: []string{"x", "sec", "secret", "secrets"}},
-		{Title: styles.TitleConfigs, Resource: "configs", Group: "swarm", Shortcuts: []string{"f", "cfg", "config", "configs"}},
+		{Title: styles.TitleConfigs, Resource: "configmaps", Group: "swarm", Shortcuts: []string{"m", "cm", "configmap", "configmaps"}},
 		{Title: styles.TitleStacks, Resource: "stacks", Group: "swarm", Shortcuts: []string{"k", "st", "stack", "stacks"}},
 		{Title: styles.TitleTasks, Resource: "tasks", Group: "swarm", Shortcuts: []string{"t", "task", "tasks"}},
 		{Title: styles.TitleContexts, Resource: "contexts", Group: "docker", Shortcuts: []string{"o", "ctx", "context", "contexts"}},
 		{Title: styles.TitlePlugins, Resource: "plugins", Group: "docker", Shortcuts: []string{"g", "pl", "plugin", "plugins"}},
 		{Title: styles.TitleCompose, Resource: "compose", Group: "compose", Shortcuts: []string{"p", "cp", "compose", "project", "projects"}},
+		{Title: styles.TitlePortForwards, Resource: "portforwards", Group: "internal", Shortcuts: []string{"w", "pf", "portforward", "portforwards"}},
 	}
 
 	var resources []dao.Resource

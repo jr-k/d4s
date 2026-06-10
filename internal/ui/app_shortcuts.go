@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/jr-k/d4s/internal/ui/common"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 func (a *App) getCurrentShortcuts() []string {
@@ -32,29 +33,44 @@ func (a *App) getCurrentShortcuts() []string {
 
 func (a *App) UpdateShortcuts() {
 	shortcuts := a.getCurrentShortcuts()
-	
-	// Let's assume UpdateShortcuts MIGHT be called from BG.
 	a.Header.UpdateShortcuts(shortcuts)
 
-	// a.TviewApp.ForceDraw() // This is dangerous from BG.
+	page, _ := a.Pages.GetFrontPage()
+	_, isView := a.Views[page]
+	modalActive := !isView && page != "inspect" && page != ""
+
+	if v, ok := a.Views[a.CurrentView]; ok && v.Table != nil {
+		if modalActive {
+			v.Table.SetBorderColor(styles.ColorMenuKey)
+		} else {
+			v.Table.SetBorderColor(styles.ColorTableBorder)
+		}
+	}
 }
 
 func (a *App) updateHeader() {
+	docker := a.Docker
 	go func() {
-		stats, err := a.Docker.GetHostStats()
+		stats, err := docker.GetHostStats()
 		if err != nil {
-			return 
+			return
 		}
-		
+
 		a.TviewApp.QueueUpdateDraw(func() {
+			if a.Docker != docker {
+				return
+			}
 			shortcuts := a.getCurrentShortcuts()
 			stats.LatestVersion = a.LatestVersion
 			a.Header.Update(stats, shortcuts)
 		})
-		
-		statsWithUsage, err := a.Docker.GetHostStatsWithUsage()
+
+		statsWithUsage, err := docker.GetHostStatsWithUsage()
 		if err == nil {
 			a.TviewApp.QueueUpdateDraw(func() {
+				if a.Docker != docker {
+					return
+				}
 				shortcuts := a.getCurrentShortcuts()
 				statsWithUsage.LatestVersion = a.LatestVersion
 				a.Header.Update(statsWithUsage, shortcuts)

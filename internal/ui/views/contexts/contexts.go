@@ -87,7 +87,9 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("enter", "Use"),
 		common.FormatSCHeader("d", "Describe"),
+		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("a", "Add"),
+		common.FormatSCHeader("shift-a", "Add Remote"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
@@ -108,8 +110,14 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	case 'd':
 		app.InspectCurrentSelection()
 		return nil
+	case 'e':
+		Edit(app, v)
+		return nil
 	case 'a':
 		Create(app)
+		return nil
+	case 'A':
+		CreateSSH(app)
 		return nil
 	}
 
@@ -174,6 +182,95 @@ func Create(app common.AppController) {
 					app.AppendFlashError(fmt.Sprintf("failed to create context: %v", err))
 				} else {
 					app.AppendFlashSuccess(fmt.Sprintf("context %s created", name))
+				}
+				app.RefreshCurrentView()
+			})
+		})
+	})
+}
+
+func Edit(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	if id == "default" {
+		app.AppendFlashError("cannot edit the default context")
+		return
+	}
+
+	// Get current values from the table data
+	var currentDesc, currentEndpoint string
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		if c, ok := v.Data[row-1].(Context); ok {
+			currentDesc = c.Description
+			currentEndpoint = c.Endpoint
+		}
+	}
+
+	fields := []dialogs.FormField{
+		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput, Default: currentDesc},
+		{Name: "host", Label: "Docker Host", Type: dialogs.FieldTypeInput, Default: currentEndpoint},
+	}
+
+	dialogs.ShowFormWithDescription(app, fmt.Sprintf("Edit Context: %s", id), "", fields, func(result dialogs.FormResult) {
+		description := result["description"]
+		host := result["host"]
+
+		app.AppendFlashPending(fmt.Sprintf("updating context %s...", id))
+
+		app.RunInBackground(func() {
+			err := app.GetDocker().UpdateContext(id, description, host)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.AppendFlashError(fmt.Sprintf("failed to update context: %v", err))
+				} else {
+					app.AppendFlashSuccess(fmt.Sprintf("context %s updated", id))
+				}
+				app.RefreshCurrentView()
+			})
+		})
+	})
+}
+
+func CreateSSH(app common.AppController) {
+	fields := []dialogs.FormField{
+		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput, Placeholder: "prod-server"},
+		{Name: "host", Label: "Host (user@ip)", Type: dialogs.FieldTypeInput, Placeholder: "root@192.168.1.100"},
+		{Name: "key", Label: "SSH Key (optional)", Type: dialogs.FieldTypeInput, Placeholder: "~/.ssh/id_ed25519"},
+		{Name: "socket", Label: "Docker Socket", Type: dialogs.FieldTypeInput, Default: "/var/run/docker.sock"},
+	}
+
+	dialogs.ShowFormWithDescription(app, "Add Remote Context (SSH)", "Creates a Docker context using SSH tunnel", fields, func(result dialogs.FormResult) {
+		name := strings.TrimSpace(result["name"])
+		host := strings.TrimSpace(result["host"])
+		socket := strings.TrimSpace(result["socket"])
+
+		if name == "" {
+			app.SetFlashError("name is required")
+			return
+		}
+		if host == "" {
+			app.SetFlashError("host is required")
+			return
+		}
+
+		sshURL := fmt.Sprintf("ssh://%s", host)
+		if socket != "" && socket != "/var/run/docker.sock" {
+			sshURL = fmt.Sprintf("ssh://%s%s", host, socket)
+		}
+
+		app.AppendFlashPending(fmt.Sprintf("creating SSH context %s (%s)...", name, sshURL))
+
+		app.RunInBackground(func() {
+			err := app.GetDocker().CreateContext(name, fmt.Sprintf("SSH remote: %s", host), sshURL)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.AppendFlashError(fmt.Sprintf("failed to create context: %v", err))
+				} else {
+					app.AppendFlashSuccess(fmt.Sprintf("SSH context '%s' created", name))
 				}
 				app.RefreshCurrentView()
 			})

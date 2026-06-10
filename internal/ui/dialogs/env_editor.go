@@ -17,11 +17,11 @@ type EnvItem struct {
 	Selected bool
 }
 
-func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onConfirm func(envVars []string)) {
+func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, onConfirm func(envVars []string)) {
 	dialogWidth := 70
-	dialogHeight := 10 + len(items)
-	if dialogHeight > 28 {
-		dialogHeight = 28
+	dialogHeight := 12 + len(items)
+	if dialogHeight > 30 {
+		dialogHeight = 30
 	}
 	if dialogHeight < 14 {
 		dialogHeight = 14
@@ -45,11 +45,11 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 
 	// --- Add new env form ---
 	placeholderStyle := tcell.StyleDefault.
-		Foreground(tcell.NewRGBColor(140, 140, 160)).
-		Background(tcell.NewRGBColor(50, 52, 68))
+		Foreground(styles.ColorDim).
+		Background(styles.ColorBlack)
 
 	nameInput := tview.NewInputField().
-		SetFieldBackgroundColor(styles.ColorSelectBg).
+		SetFieldBackgroundColor(styles.ColorBlack).
 		SetFieldTextColor(tcell.ColorWhite).
 		SetLabel(" Name: ").
 		SetLabelColor(styles.ColorWhite).
@@ -58,7 +58,7 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 	nameInput.SetBackgroundColor(styles.ColorBlack)
 
 	valueInput := tview.NewInputField().
-		SetFieldBackgroundColor(styles.ColorSelectBg).
+		SetFieldBackgroundColor(styles.ColorBlack).
 		SetFieldTextColor(tcell.ColorWhite).
 		SetLabel(" Value: ").
 		SetLabelColor(styles.ColorWhite).
@@ -66,9 +66,9 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 		SetPlaceholderStyle(placeholderStyle)
 	valueInput.SetBackgroundColor(styles.ColorBlack)
 
-	addButton := tview.NewButton("  Add  ").
-		SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(styles.ColorStatusBlue)).
-		SetActivatedStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(styles.ColorStatusGreen))
+	addButton := tview.NewButton("  Add  ")
+	addButton.SetStyle(tcell.StyleDefault.Foreground(styles.ColorFg).Background(styles.ColorBlack)).
+		SetActivatedStyle(tcell.StyleDefault.Foreground(styles.ColorBlack).Background(styles.ColorMenuKey))
 	addButton.SetBackgroundColor(styles.ColorBlack)
 
 	spacer := tview.NewBox().SetBackgroundColor(styles.ColorBlack)
@@ -80,11 +80,12 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 		AddItem(spacer, 2, 0, false).
 		AddItem(addButton, 10, 0, false)
 
-	separator := tview.NewTextView().
+	// Subject header
+	subjectView := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 66) + "[-]").
-		SetTextAlign(tview.AlignCenter)
-	separator.SetBackgroundColor(styles.ColorBlack)
+		SetTextAlign(tview.AlignCenter).
+		SetText(fmt.Sprintf("[%s::b]%s[-::-]", styles.TagPink, subject))
+	subjectView.SetBackgroundColor(styles.ColorBlack)
 
 	// --- Env list with checkboxes ---
 	list := tview.NewTextView().
@@ -123,25 +124,44 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 	}
 	updateList()
 
-	// Help text
-	helpText := tview.NewTextView().
+	// Confirm button
+	confirmBtn := tview.NewButton("Confirm")
+	confirmBtn.SetStyle(tcell.StyleDefault.Foreground(styles.ColorFg).Background(styles.ColorBlack)).
+		SetActivatedStyle(tcell.StyleDefault.Foreground(styles.ColorBlack).Background(styles.ColorMenuKey))
+	confirmBtn.SetBackgroundColor(styles.ColorBlack)
+
+	confirmRow := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(tview.NewBox().SetBackgroundColor(styles.ColorBlack), 0, 1, false).
+		AddItem(confirmBtn, 11, 0, false).
+		AddItem(tview.NewBox().SetBackgroundColor(styles.ColorBlack), 0, 1, false)
+	confirmRow.SetBackgroundColor(styles.ColorBlack)
+
+	// Separator
+	separator := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText(fmt.Sprintf("[%s]tab switch focus • ↑/↓ navigate • space toggle • enter/esc confirm", styles.TagDim)).
+		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 66) + "[-]").
 		SetTextAlign(tview.AlignCenter)
-	helpText.SetBackgroundColor(styles.ColorBlack)
+	separator.SetBackgroundColor(styles.ColorBlack)
 
 	// Layout
+	spacer1 := tview.NewBox().SetBackgroundColor(styles.ColorBlack)
+	spacer2 := tview.NewBox().SetBackgroundColor(styles.ColorBlack)
+	bottomSpacer := tview.NewBox().SetBackgroundColor(styles.ColorBlack)
 	content := tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(spacer1, 1, 0, false).
+		AddItem(subjectView, 1, 0, false).
+		AddItem(spacer2, 1, 0, false).
 		AddItem(addFormRow, 1, 0, true).
 		AddItem(separator, 1, 0, false).
 		AddItem(list, 0, 1, false).
-		AddItem(helpText, 1, 0, false)
+		AddItem(confirmRow, 1, 0, false).
+		AddItem(bottomSpacer, 1, 0, false)
 
 	content.SetBorder(true).
-		SetTitle(" " + title + " ").
+		SetTitle(fmt.Sprintf("[%s::b]<Edit Env>[-::-]", styles.TagCyan)).
 		SetTitleColor(styles.ColorTitle).
-		SetBorderColor(styles.ColorTitle).
+		SetBorderColor(styles.ColorMenuKey).
 		SetBackgroundColor(styles.ColorBlack)
 
 	// Center on screen
@@ -227,7 +247,7 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 		tviewApp.SetFocus(nameInput)
 	}
 
-	// Focus management: 0=nameInput, 1=valueInput, 2=addButton, 3=list
+	// Focus management: 0=nameInput, 1=valueInput, 2=addButton, 3=list, 4=confirmBtn
 	focusTarget := 0
 
 	setFocus := func(target int) {
@@ -241,6 +261,8 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 			tviewApp.SetFocus(addButton)
 		case 3:
 			tviewApp.SetFocus(list)
+		case 4:
+			tviewApp.SetFocus(confirmBtn)
 		}
 	}
 
@@ -326,10 +348,10 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 			collectResults()
 			return nil
 		case tcell.KeyEnter:
-			collectResults()
+			setFocus(4)
 			return nil
 		case tcell.KeyTab:
-			setFocus(0)
+			setFocus(4)
 			return nil
 		case tcell.KeyBacktab:
 			setFocus(2)
@@ -346,6 +368,8 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 			if currentIndex < len(items)-1 {
 				currentIndex++
 				updateList()
+			} else {
+				setFocus(4)
 			}
 			return nil
 		}
@@ -358,6 +382,24 @@ func ShowEnvEditor(app common.AppController, title string, items []EnvItem, onCo
 			return nil
 		}
 
+		return event
+	})
+
+	confirmBtn.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			collectResults()
+			return nil
+		case tcell.KeyEnter:
+			collectResults()
+			return nil
+		case tcell.KeyTab:
+			setFocus(0)
+			return nil
+		case tcell.KeyBacktab:
+			setFocus(3)
+			return nil
+		}
 		return event
 	})
 

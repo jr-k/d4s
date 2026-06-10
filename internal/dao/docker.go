@@ -99,6 +99,10 @@ type DockerClient struct {
 	// Guard against concurrent async refreshes
 	refreshMu  sync.Mutex
 	refreshing map[string]bool
+
+	// Cached SSH context check
+	isSSHOnce sync.Once
+	isSSH     bool
 }
 
 func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContext string) (*DockerClient, error) {
@@ -638,6 +642,22 @@ func (d *DockerClient) CreateContext(name, description, host string) error {
 	return nil
 }
 
+func (d *DockerClient) UpdateContext(name, description, host string) error {
+	args := []string{"context", "update", name}
+	if description != "" {
+		args = append(args, "--description", description)
+	}
+	if host != "" {
+		args = append(args, "--docker", fmt.Sprintf("host=%s", host))
+	}
+	cmd := exec.Command("docker", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error updating context: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
 func (d *DockerClient) ListPlugins() ([]PluginInfo, error) {
 	cmd := exec.Command("docker", "plugin", "ls", "--format", "{{json .}}")
 	output, err := cmd.CombinedOutput()
@@ -954,6 +974,99 @@ func (d *DockerClient) ListVolumesForContainer(id string) ([]common.Resource, er
 	}
 
 	return result, nil
+}
+
+func (d *DockerClient) IsSSHContext() bool {
+	d.isSSHOnce.Do(func() {
+		ctxList, err := ListContexts()
+		if err != nil {
+			return
+		}
+		for _, c := range ctxList {
+			if c.Name == d.ContextName {
+				d.isSSH = strings.HasPrefix(c.DockerEndpoint, "ssh://")
+				return
+			}
+		}
+	})
+	return d.isSSH
+}
+
+func (d *DockerClient) GetSSHHost() string {
+	ctxList, err := ListContexts()
+	if err != nil {
+		return ""
+	}
+	for _, c := range ctxList {
+		if c.Name == d.ContextName {
+			host := strings.TrimPrefix(c.DockerEndpoint, "ssh://")
+			return host
+		}
+	}
+	return ""
+}
+
+type ContainerPortInfo struct {
+	ContainerPort uint16
+	HostPort      uint16
+	Protocol      string
+	IP            string
+}
+
+func (d *DockerClient) GetContainerIP(id string) (string, error) {
+	cj, err := d.Cli.ContainerInspect(d.Ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if cj.NetworkSettings == nil {
+		return "", fmt.Errorf("no network settings for container %s", id)
+	}
+	for _, n := range cj.NetworkSettings.Networks {
+		if n.IPAddress != "" {
+			return n.IPAddress, nil
+		}
+	}
+	return "", fmt.Errorf("no IP found for container %s", id)
+}
+
+func (d *DockerClient) GetContainerPorts(id string) ([]ContainerPortInfo, error) {
+	cj, err := d.Cli.ContainerInspect(d.Ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var ports []ContainerPortInfo
+
+	if cj.NetworkSettings != nil {
+		for port, bindings := range cj.NetworkSettings.Ports {
+			cp := ContainerPortInfo{
+				ContainerPort: uint16(port.Int()),
+				Protocol:      port.Proto(),
+			}
+			if len(bindings) > 0 {
+				cp.HostPort = parsePort(bindings[0].HostPort)
+				cp.IP = bindings[0].HostIP
+			}
+			ports = append(ports, cp)
+		}
+	}
+
+	if len(ports) == 0 && cj.Config != nil {
+		for port := range cj.Config.ExposedPorts {
+			ports = append(ports, ContainerPortInfo{
+				ContainerPort: uint16(port.Int()),
+				Protocol:      port.Proto(),
+			})
+		}
+	}
+
+	return ports, nil
+}
+
+func parsePort(s string) uint16 {
+	var p int
+	fmt.Sscanf(s, "%d", &p)
+	return uint16(p)
 }
 
 func (d *DockerClient) ListNetworksForContainer(id string) ([]common.Resource, error) {

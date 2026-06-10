@@ -8,6 +8,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/portforward"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -163,17 +164,19 @@ func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("e", "Env"),
 		common.FormatSCHeader("t", "Tasks"),
+		common.FormatSCHeader("f", "Show PortForward"),
 		common.FormatSCHeader("x", "Secrets"),
-		common.FormatSCHeader("f", "Configs"),
+		common.FormatSCHeader("m", "ConfigMaps"),
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("p", "Ps"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("s", "Scale"),
 		common.FormatSCHeader("r", "Restart"),
 		common.FormatSCHeader("z", "No Replica"),
+		common.FormatSCHeader("shift-f", "Port-Forward"),
 		common.FormatSCHeader("shift-e", "Edit Env"),
 		common.FormatSCHeader("shift-x", "Attach Secrets"),
-		common.FormatSCHeader("shift-f", "Attach Configs"),
+		common.FormatSCHeader("shift-m", "Attach ConfigMaps"),
 		common.FormatSCHeader("shift-n", "Attach Networks"),
 		common.FormatSCHeader("shift-i", "Edit Image"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
@@ -197,16 +200,22 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	case 'e':
 		Env(app, v)
 		return nil
+	case 'f':
+		ShowPortForwards(app, v)
+		return nil
+	case 'F':
+		PortForwardAction(app, v)
+		return nil
 	case 'x':
 		Secrets(app, v)
 		return nil
 	case 'X':
 		SecretsPicker(app, v)
 		return nil
-	case 'f':
+	case 'm':
 		Configs(app, v)
 		return nil
-	case 'F':
+	case 'M':
 		ConfigsPicker(app, v)
 		return nil
 	case 'E':
@@ -510,79 +519,79 @@ func SecretsPicker(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
-	// Get all secrets
-	allSecrets, err := app.GetDocker().ListSecrets()
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	if len(allSecrets) == 0 {
-		app.SetFlashError("no secrets available")
-		return
-	}
-
-	// Get current service secrets
-	currentSecrets, err := app.GetDocker().GetServiceSecrets(id)
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	// Build map of attached secret IDs
-	attachedIDs := make(map[string]bool)
-	for _, s := range currentSecrets {
-		attachedIDs[s.SecretID] = true
-	}
-
-	// Build picker items
-	var items []dialogs.MultiPickerItem
-	for _, sec := range allSecrets {
-		s := sec.(dao.Secret)
-		items = append(items, dialogs.MultiPickerItem{
-			ID:       s.ID,
-			Label:    s.Name,
-			Selected: attachedIDs[s.ID],
-		})
-	}
-
 	subject := resolveServiceSubject(v, id)
+	app.SetFlashPending("loading secrets...")
 
-	dialogs.ShowMultiPicker(app, fmt.Sprintf("Secrets for %s", subject), items, func(selected []string) {
-		// Build new secret references
-		selectedMap := make(map[string]bool)
-		for _, id := range selected {
-			selectedMap[id] = true
+	app.RunInBackground(func() {
+		allSecrets, err := app.GetDocker().ListSecrets()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
 		}
 
-		// Build secret refs from selected IDs
-		var newSecretRefs []*swarm.SecretReference
+		if len(allSecrets) == 0 {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError("no secrets available") })
+			return
+		}
+
+		currentSecrets, err := app.GetDocker().GetServiceSecrets(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
+		}
+
+		attachedIDs := make(map[string]bool)
+		for _, s := range currentSecrets {
+			attachedIDs[s.SecretID] = true
+		}
+
+		var items []dialogs.MultiPickerItem
 		for _, sec := range allSecrets {
 			s := sec.(dao.Secret)
-			if selectedMap[s.ID] {
-				newSecretRefs = append(newSecretRefs, &swarm.SecretReference{
-					SecretID:   s.ID,
-					SecretName: s.Name,
-					File: &swarm.SecretReferenceFileTarget{
-						Name: s.Name,
-						UID:  "0",
-						GID:  "0",
-						Mode: 0444,
-					},
-				})
-			}
+			items = append(items, dialogs.MultiPickerItem{
+				ID:       s.ID,
+				Label:    s.Name,
+				Selected: attachedIDs[s.ID],
+			})
 		}
 
-		app.SetFlashPending("updating service secrets...")
-		app.RunInBackground(func() {
-			err := app.GetDocker().SetServiceSecrets(id, newSecretRefs)
-			app.GetTviewApp().QueueUpdateDraw(func() {
-				if err != nil {
-					app.SetFlashError(fmt.Sprintf("%v", err))
-				} else {
-					app.SetFlashSuccess("service secrets updated")
-					app.RefreshCurrentView()
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetFlashText("")
+			dialogs.ShowMultiPicker(app, "Attach Secrets", subject, items, func(selected []string) {
+				selectedMap := make(map[string]bool)
+				for _, id := range selected {
+					selectedMap[id] = true
 				}
+
+				var newSecretRefs []*swarm.SecretReference
+				for _, sec := range allSecrets {
+					s := sec.(dao.Secret)
+					if selectedMap[s.ID] {
+						newSecretRefs = append(newSecretRefs, &swarm.SecretReference{
+							SecretID:   s.ID,
+							SecretName: s.Name,
+							File: &swarm.SecretReferenceFileTarget{
+								Name: s.Name,
+								UID:  "0",
+								GID:  "0",
+								Mode: 0444,
+							},
+						})
+					}
+				}
+
+				app.SetFlashPending("updating service secrets...")
+				app.RunInBackground(func() {
+					err := app.GetDocker().SetServiceSecrets(id, newSecretRefs)
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						if err != nil {
+							app.SetFlashError(fmt.Sprintf("%v", err))
+						} else {
+							app.SetFlashSuccess("service secrets updated")
+							app.RefreshCurrentView()
+						}
+					})
+				})
 			})
 		})
 	})
@@ -621,7 +630,7 @@ func Configs(app common.AppController, v *view.ResourceView) {
 		}
 	}
 
-	app.OpenInspector(inspect.NewTextInspector("Configs service", subject, strings.Join(lines, "\n"), "text"))
+	app.OpenInspector(inspect.NewTextInspector("Configmap service", subject, strings.Join(lines, "\n"), "text"))
 }
 
 func ConfigsPicker(app common.AppController, v *view.ResourceView) {
@@ -630,73 +639,79 @@ func ConfigsPicker(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
-	allConfigs, err := app.GetDocker().ListConfigs()
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	if len(allConfigs) == 0 {
-		app.SetFlashError("no configs available")
-		return
-	}
-
-	currentConfigs, err := app.GetDocker().GetServiceConfigs(id)
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	attachedIDs := make(map[string]bool)
-	for _, c := range currentConfigs {
-		attachedIDs[c.ConfigID] = true
-	}
-
-	var items []dialogs.MultiPickerItem
-	for _, cfg := range allConfigs {
-		c := cfg.(dao.Config)
-		items = append(items, dialogs.MultiPickerItem{
-			ID:       c.ID,
-			Label:    c.Name,
-			Selected: attachedIDs[c.ID],
-		})
-	}
-
 	subject := resolveServiceSubject(v, id)
+	app.SetFlashPending("loading configs...")
 
-	dialogs.ShowMultiPicker(app, fmt.Sprintf("Configs for %s", subject), items, func(selected []string) {
-		selectedMap := make(map[string]bool)
-		for _, id := range selected {
-			selectedMap[id] = true
+	app.RunInBackground(func() {
+		allConfigs, err := app.GetDocker().ListConfigs()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
 		}
 
-		var newConfigRefs []*swarm.ConfigReference
+		if len(allConfigs) == 0 {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError("no configs available") })
+			return
+		}
+
+		currentConfigs, err := app.GetDocker().GetServiceConfigs(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
+		}
+
+		attachedIDs := make(map[string]bool)
+		for _, c := range currentConfigs {
+			attachedIDs[c.ConfigID] = true
+		}
+
+		var items []dialogs.MultiPickerItem
 		for _, cfg := range allConfigs {
 			c := cfg.(dao.Config)
-			if selectedMap[c.ID] {
-				newConfigRefs = append(newConfigRefs, &swarm.ConfigReference{
-					ConfigID:   c.ID,
-					ConfigName: c.Name,
-					File: &swarm.ConfigReferenceFileTarget{
-						Name: c.Name,
-						UID:  "0",
-						GID:  "0",
-						Mode: 0444,
-					},
-				})
-			}
+			items = append(items, dialogs.MultiPickerItem{
+				ID:       c.ID,
+				Label:    c.Name,
+				Selected: attachedIDs[c.ID],
+			})
 		}
 
-		app.SetFlashPending("updating service configs...")
-		app.RunInBackground(func() {
-			err := app.GetDocker().SetServiceConfigs(id, newConfigRefs)
-			app.GetTviewApp().QueueUpdateDraw(func() {
-				if err != nil {
-					app.SetFlashError(fmt.Sprintf("%v", err))
-				} else {
-					app.SetFlashSuccess("service configs updated")
-					app.RefreshCurrentView()
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetFlashText("")
+			dialogs.ShowMultiPicker(app, "Attach ConfigMaps", subject, items, func(selected []string) {
+				selectedMap := make(map[string]bool)
+				for _, id := range selected {
+					selectedMap[id] = true
 				}
+
+				var newConfigRefs []*swarm.ConfigReference
+				for _, cfg := range allConfigs {
+					c := cfg.(dao.Config)
+					if selectedMap[c.ID] {
+						newConfigRefs = append(newConfigRefs, &swarm.ConfigReference{
+							ConfigID:   c.ID,
+							ConfigName: c.Name,
+							File: &swarm.ConfigReferenceFileTarget{
+								Name: c.Name,
+								UID:  "0",
+								GID:  "0",
+								Mode: 0444,
+							},
+						})
+					}
+				}
+
+				app.SetFlashPending("updating service configs...")
+				app.RunInBackground(func() {
+					err := app.GetDocker().SetServiceConfigs(id, newConfigRefs)
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						if err != nil {
+							app.SetFlashError(fmt.Sprintf("%v", err))
+						} else {
+							app.SetFlashSuccess("service configs updated")
+							app.RefreshCurrentView()
+						}
+					})
+				})
 			})
 		})
 	})
@@ -708,40 +723,46 @@ func EnvPicker(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
-	env, err := app.GetDocker().GetServiceEnv(id)
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
 	subject := resolveServiceSubject(v, id)
+	app.SetFlashPending("loading env...")
 
-	var items []dialogs.EnvItem
-	for _, line := range env {
-		parts := strings.SplitN(line, "=", 2)
-		key := parts[0]
-		value := ""
-		if len(parts) == 2 {
-			value = parts[1]
+	app.RunInBackground(func() {
+		env, err := app.GetDocker().GetServiceEnv(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
 		}
-		items = append(items, dialogs.EnvItem{
-			Key:      key,
-			Value:    value,
-			Selected: true,
-		})
-	}
 
-	dialogs.ShowEnvEditor(app, fmt.Sprintf("Env for %s", subject), items, func(envVars []string) {
-		app.SetFlashPending("updating service env...")
-		app.RunInBackground(func() {
-			err := app.GetDocker().SetServiceEnv(id, envVars)
-			app.GetTviewApp().QueueUpdateDraw(func() {
-				if err != nil {
-					app.SetFlashError(fmt.Sprintf("%v", err))
-				} else {
-					app.SetFlashSuccess("service env updated")
-					app.RefreshCurrentView()
-				}
+		var items []dialogs.EnvItem
+		for _, line := range env {
+			parts := strings.SplitN(line, "=", 2)
+			key := parts[0]
+			value := ""
+			if len(parts) == 2 {
+				value = parts[1]
+			}
+			items = append(items, dialogs.EnvItem{
+				Key:      key,
+				Value:    value,
+				Selected: true,
+			})
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetFlashText("")
+			dialogs.ShowEnvEditor(app, subject, items, func(envVars []string) {
+				app.SetFlashPending("updating service env...")
+				app.RunInBackground(func() {
+					err := app.GetDocker().SetServiceEnv(id, envVars)
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						if err != nil {
+							app.SetFlashError(fmt.Sprintf("%v", err))
+						} else {
+							app.SetFlashSuccess("service env updated")
+							app.RefreshCurrentView()
+						}
+					})
+				})
 			})
 		})
 	})
@@ -753,67 +774,68 @@ func NetworksPicker(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
-	// Get all networks
-	allNetworks, err := app.GetDocker().ListNetworks()
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	if len(allNetworks) == 0 {
-		app.SetFlashError("no networks available")
-		return
-	}
-
-	// Get current service networks
-	currentNetworks, err := app.GetDocker().GetServiceNetworks(id)
-	if err != nil {
-		app.SetFlashError(fmt.Sprintf("%v", err))
-		return
-	}
-
-	// Build map of attached network IDs
-	attachedIDs := make(map[string]bool)
-	for _, n := range currentNetworks {
-		attachedIDs[n.Target] = true
-	}
-
-	// Build picker items
-	var items []dialogs.MultiPickerItem
-	for _, res := range allNetworks {
-		if n, ok := res.(dao.Network); ok {
-			if n.Scope != "swarm" {
-				continue
-			}
-			items = append(items, dialogs.MultiPickerItem{
-				ID:       n.ID,
-				Label:    n.Name,
-				Selected: attachedIDs[n.ID],
-			})
-		}
-	}
-
 	subject := resolveServiceSubject(v, id)
+	app.SetFlashPending("loading networks...")
 
-	dialogs.ShowMultiPicker(app, fmt.Sprintf("Networks for %s", subject), items, func(selected []string) {
-		// Build new network configs
-		var newNetworks []swarm.NetworkAttachmentConfig
-		for _, netID := range selected {
-			newNetworks = append(newNetworks, swarm.NetworkAttachmentConfig{
-				Target: netID,
-			})
+	app.RunInBackground(func() {
+		allNetworks, err := app.GetDocker().ListNetworks()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
 		}
 
-		app.SetFlashPending("updating service networks...")
-		app.RunInBackground(func() {
-			err := app.GetDocker().SetServiceNetworks(id, newNetworks)
-			app.GetTviewApp().QueueUpdateDraw(func() {
-				if err != nil {
-					app.SetFlashError(fmt.Sprintf("%v", err))
-				} else {
-					app.SetFlashSuccess("service networks updated")
-					app.RefreshCurrentView()
+		if len(allNetworks) == 0 {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError("no networks available") })
+			return
+		}
+
+		currentNetworks, err := app.GetDocker().GetServiceNetworks(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
+		}
+
+		attachedIDs := make(map[string]bool)
+		for _, n := range currentNetworks {
+			attachedIDs[n.Target] = true
+		}
+
+		var items []dialogs.MultiPickerItem
+		for _, res := range allNetworks {
+			if n, ok := res.(dao.Network); ok {
+				if n.Scope != "swarm" {
+					continue
 				}
+				items = append(items, dialogs.MultiPickerItem{
+					ID:       n.ID,
+					Label:    n.Name,
+					Selected: attachedIDs[n.ID],
+				})
+			}
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetFlashText("")
+			dialogs.ShowMultiPicker(app, "Attach Networks", subject, items, func(selected []string) {
+				var newNetworks []swarm.NetworkAttachmentConfig
+				for _, netID := range selected {
+					newNetworks = append(newNetworks, swarm.NetworkAttachmentConfig{
+						Target: netID,
+					})
+				}
+
+				app.SetFlashPending("updating service networks...")
+				app.RunInBackground(func() {
+					err := app.GetDocker().SetServiceNetworks(id, newNetworks)
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						if err != nil {
+							app.SetFlashError(fmt.Sprintf("%v", err))
+						} else {
+							app.SetFlashSuccess("service networks updated")
+							app.RefreshCurrentView()
+						}
+					})
+				})
 			})
 		})
 	})
@@ -859,4 +881,189 @@ func EditAction(app common.AppController, v *view.ResourceView) {
 			})
 		})
 	})
+}
+
+func ShowPortForwards(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	_, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	serviceName := getSelectedServiceName(v)
+	if serviceName == "" {
+		return
+	}
+
+	app.SetActiveScope(&common.Scope{
+		Type:       "service",
+		Value:      serviceName,
+		Label:      serviceName,
+		OriginView: styles.TitleServices,
+	})
+	app.SwitchTo(styles.TitlePortForwards)
+}
+
+func PortForwardAction(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	_, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	serviceName := getSelectedServiceName(v)
+	if serviceName == "" {
+		return
+	}
+
+	pickerTitle := fmt.Sprintf("Port-Forward: %s", serviceName)
+	dialogs.ShowPickerLoading(app, pickerTitle)
+
+	app.RunInBackground(func() {
+		containers, err := app.GetDocker().ListContainers()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				app.GetPages().RemovePage("picker")
+				app.AppendFlashError(fmt.Sprintf("failed to list containers: %v", err))
+			})
+			return
+		}
+
+		var items []dialogs.PickerItem
+		for _, r := range containers {
+			if c, ok := r.(dao.Container); ok {
+				if c.ServiceName == serviceName && c.Ports != "" {
+					items = append(items, dialogs.PickerItem{
+						Label:       c.Names,
+						Description: c.Ports,
+						Value:       c.ID,
+					})
+				}
+			}
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			if len(items) == 0 {
+				app.GetPages().RemovePage("picker")
+				app.AppendFlashError("no containers with exposed ports for this service")
+				return
+			}
+
+			if len(items) == 1 {
+				app.GetPages().RemovePage("picker")
+				portForwardContainer(app, containers, items[0].Value)
+				return
+			}
+
+			dialogs.ShowPicker(app, pickerTitle, items, func(containerID string) {
+				portForwardContainer(app, containers, containerID)
+			})
+		})
+	})
+}
+
+func getSelectedServiceName(v *view.ResourceView) string {
+	row, _ := v.Table.GetSelection()
+	if row > 0 {
+		index := row - 1
+		if index >= 0 && index < len(v.Data) {
+			if s, ok := v.Data[index].(dao.Service); ok {
+				return s.Name
+			}
+		}
+	}
+	return ""
+}
+
+func portForwardContainer(app common.AppController, containers []dao.Resource, containerID string) {
+	var name, portsStr string
+	for _, r := range containers {
+		if c, ok := r.(dao.Container); ok {
+			if c.ID == containerID {
+				name = c.Names
+				portsStr = c.Ports
+				break
+			}
+		}
+	}
+
+	portInfos := parsePortsString(portsStr)
+	if len(portInfos) == 0 {
+		app.AppendFlashError("no ports found")
+		return
+	}
+
+	dialogs.ShowPortForwardDialog(app, containerID, name, portInfos, func(result dialogs.PortForwardResult) {
+		app.SetFlashPending(fmt.Sprintf("forwarding %s:%d...", result.Address, result.LocalPort))
+		app.RunInBackground(func() {
+			containerIP, err := app.GetDocker().GetContainerIP(containerID)
+			if err != nil {
+				app.GetTviewApp().QueueUpdateDraw(func() {
+					app.AppendFlashError(fmt.Sprintf("failed to get container IP: %v", err))
+				})
+				return
+			}
+
+			pf := &portforward.PortForward{
+				ContextName:   app.GetDocker().ContextName,
+				SSHHost:       app.GetDocker().GetSSHHost(),
+				ContainerID:   containerID,
+				ContainerName: name,
+				ContainerIP:   containerIP,
+				ContainerPort: result.ContainerPort,
+				HostPort:      result.HostPort,
+				LocalPort:     result.LocalPort,
+			}
+
+			err = app.GetPortForwardManager().Add(pf)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.AppendFlashError(fmt.Sprintf("port-forward failed: %v", err))
+				} else {
+					app.AppendFlashSuccess(fmt.Sprintf("forwarding %s:%d -> container:%d", result.Address, result.LocalPort, result.ContainerPort))
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
+func parsePortsString(ports string) []dialogs.PortInfo {
+	var result []dialogs.PortInfo
+	seen := make(map[uint16]bool)
+	for _, part := range strings.Split(ports, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		parts := strings.SplitN(part, "->", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		var cp int
+		fmt.Sscanf(parts[1], "%d", &cp)
+		if cp <= 0 || seen[uint16(cp)] {
+			continue
+		}
+		seen[uint16(cp)] = true
+		var hp int
+		hostPart := parts[0]
+		if idx := strings.LastIndex(hostPart, ":"); idx >= 0 {
+			fmt.Sscanf(hostPart[idx+1:], "%d", &hp)
+		}
+		result = append(result, dialogs.PortInfo{
+			ContainerPort: uint16(cp),
+			HostPort:      uint16(hp),
+			Protocol:      "tcp",
+		})
+	}
+	return result
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
+	"github.com/jr-k/d4s/internal/portforward"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -18,7 +19,39 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-var Headers = []string{"ID", "NAME", "IMAGE", "STATUS", "CPU", "MEM", "AGE", "IP", "PORTS", "COMPOSE", "CMD", "CREATED"}
+var Headers = []string{"ID", "NAME", "IMAGE", "STATUS", "CPU", "MEM", "AGE", "PF", "IP", "PORTS", "COMPOSE", "CMD", "CREATED"}
+
+type containerWithPF struct {
+	dao.Container
+	pf string
+}
+
+func (c containerWithPF) GetCells() []string {
+	cells := c.Container.GetCells()
+	// Insert PF at index 7 (before IP)
+	result := make([]string, 0, len(cells)+1)
+	result = append(result, cells[:7]...)
+	result = append(result, c.pf)
+	result = append(result, cells[7:]...)
+	return result
+}
+
+func (c containerWithPF) GetColumnValue(column string) string {
+	if strings.ToLower(column) == "pf" {
+		return c.pf
+	}
+	return c.Container.GetColumnValue(column)
+}
+
+func asContainer(res dao.Resource) (dao.Container, bool) {
+	if c, ok := res.(dao.Container); ok {
+		return c, true
+	}
+	if w, ok := res.(containerWithPF); ok {
+		return w.Container, true
+	}
+	return dao.Container{}, false
+}
 
 func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
 	data, err := app.GetDocker().ListContainers()
@@ -51,7 +84,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 					}
 				}
 			}
-			return scopedData, nil
+			return wrapWithPF(scopedData, app), nil
 		} else if scope.Type == "service" {
 			var scopedData []dao.Resource
 			for _, res := range data {
@@ -61,7 +94,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 					}
 				}
 			}
-			return scopedData, nil
+			return wrapWithPF(scopedData, app), nil
 		} else if scope.Type == "task" {
 			var scopedData []dao.Resource
 			for _, res := range data {
@@ -73,24 +106,21 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 					}
 				}
 			}
-			return scopedData, nil
+			return wrapWithPF(scopedData, app), nil
 		} else if scope.Type == "image" {
 			var scopedData []dao.Resource
 			for _, res := range data {
 				if c, ok := res.(dao.Container); ok {
-					// 1. Match by ImageID (trimmed hash)
 					if c.ImageID != "" && (c.ImageID == scope.Value || strings.HasPrefix(c.ImageID, scope.Value)) {
 						scopedData = append(scopedData, res)
 						continue
 					}
-
-					// 2. Fallback: Match by Image Name/Tag
 					if strings.HasPrefix(c.Image, scope.Value) || strings.Contains(c.Image, scope.Value) {
 						scopedData = append(scopedData, res)
 					}
 				}
 			}
-			return scopedData, nil
+			return wrapWithPF(scopedData, app), nil
 		} else if scope.Type == "network" {
 			var scopedData []dao.Resource
 			for _, res := range data {
@@ -103,17 +133,32 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 					}
 				}
 			}
-			return scopedData, nil
+			return wrapWithPF(scopedData, app), nil
 		}
 	}
 
-	return data, nil
+	return wrapWithPF(data, app), nil
+}
+
+func wrapWithPF(data []dao.Resource, app common.AppController) []dao.Resource {
+	pfMgr := app.GetPortForwardManager()
+	for i, res := range data {
+		if c, ok := res.(dao.Container); ok {
+			pf := ""
+			if pfMgr.GetForContainer(c.ID) != nil {
+				pf = "●"
+			}
+			data[i] = containerWithPF{Container: c, pf: pf}
+		}
+	}
+	return data
 }
 
 func GetShortcuts() []string {
 	return []string{
 		common.FormatSCHeader("l", "Logs"),
 		common.FormatSCHeader("s", "Shell"),
+		common.FormatSCHeader("f", "Show PortForward"),
 		common.FormatSCHeader("i", "Image"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Env"),
@@ -123,6 +168,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("n", "Networks"),
 		common.FormatSCHeader("p", "Project"),
 		common.FormatSCHeader("r", "(Re)Start"),
+		common.FormatSCHeader("shift-f", "Port-Forward"),
 		common.FormatSCHeader("shift-p", "Prune"),
 		common.FormatSCHeader("shift-s", "Root Shell"),
 		common.FormatSCHeader("shift-n", "Attach Network"),
@@ -146,7 +192,14 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		Logs(app, v)
 		return nil
 	}
+	if event.Rune() == 'F' {
+		PortForwardAction(app, v)
+		return nil
+	}
 	switch event.Rune() {
+	case 'f':
+		ShowPortForwards(app, v)
+		return nil
 	case 'e':
 		Env(app, v)
 		return nil
@@ -261,7 +314,7 @@ func Stats(app common.AppController, v *view.ResourceView) {
 	if row > 0 {
 		index := row - 1
 		if index >= 0 && index < len(v.Data) {
-			if c, ok := v.Data[index].(dao.Container); ok {
+			if c, ok := asContainer(v.Data[index]); ok {
 				name = c.Names
 			}
 		}
@@ -280,7 +333,7 @@ func Monitor(app common.AppController, v *view.ResourceView) {
 	if row > 0 {
 		index := row - 1
 		if index >= 0 && index < len(v.Data) {
-			if c, ok := v.Data[index].(dao.Container); ok {
+			if c, ok := asContainer(v.Data[index]); ok {
 				name = c.Names
 			}
 		}
@@ -343,7 +396,7 @@ func Describe(app common.AppController, v *view.ResourceView) {
 	if row > 0 {
 		index := row - 1
 		if index >= 0 && index < len(v.Data) {
-			if c, ok := v.Data[index].(dao.Container); ok {
+			if c, ok := asContainer(v.Data[index]); ok {
 				name = strings.TrimPrefix(c.Names, "/")
 			}
 		}
@@ -460,14 +513,11 @@ func InspectImage(app common.AppController, v *view.ResourceView) {
 	if err != nil { return }
 
 	var imageID string
-	var imageName string
 
-	// Find container to get ImageID
 	for _, res := range v.Data {
 		if res.GetID() == id {
-			if c, ok := res.(dao.Container); ok {
+			if c, ok := asContainer(res); ok {
 				imageID = c.ImageID
-				imageName = c.Image
 			}
 			break
 		}
@@ -478,10 +528,12 @@ func InspectImage(app common.AppController, v *view.ResourceView) {
 		return
 	}
 
+	subject := resolveContainerSubject(v, id)
+
 	app.SetActiveScope(&common.Scope{
 		Type:       "image",
 		Value:      imageID,
-		Label:      fmt.Sprintf("Image: %s", imageName),
+		Label:      subject,
 		OriginView: styles.TitleContainers,
 	})
 
@@ -496,7 +548,7 @@ func Project(app common.AppController, v *view.ResourceView) {
 
 	for _, res := range v.Data {
 		if res.GetID() == id {
-			if c, ok := res.(dao.Container); ok {
+			if c, ok := asContainer(res); ok {
 				projectName = c.ProjectName
 			}
 			break
@@ -581,7 +633,7 @@ func resolveContainerSubject(v *view.ResourceView, id string) string {
 	if row > 0 {
 		index := row - 1
 		if index >= 0 && index < len(v.Data) {
-			if c, ok := v.Data[index].(dao.Container); ok {
+			if c, ok := asContainer(v.Data[index]); ok {
 				name = strings.TrimPrefix(c.Names, "/")
 			}
 		}
@@ -637,7 +689,7 @@ func NetworksPicker(app common.AppController, v *view.ResourceView) {
 
 	subject := resolveContainerSubject(v, id)
 
-	dialogs.ShowMultiPicker(app, fmt.Sprintf("Networks for %s", subject), items, func(selected []string) {
+	dialogs.ShowMultiPicker(app, "Attach Networks", subject, items, func(selected []string) {
 		selectedMap := make(map[string]bool)
 		for _, sid := range selected {
 			selectedMap[sid] = true
@@ -690,4 +742,136 @@ func NetworksPicker(app common.AppController, v *view.ResourceView) {
 			})
 		})
 	})
+}
+
+func PortForwardAction(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	name := ""
+	portsStr := ""
+	row, _ := v.Table.GetSelection()
+	if row > 0 && row <= len(v.Data) {
+		if c, ok := asContainer(v.Data[row-1]); ok {
+			name = c.Names
+			portsStr = c.Ports
+		}
+	}
+
+	portInfos := parsePortsString(portsStr)
+	if len(portInfos) == 0 {
+		app.AppendFlashError("no exposed ports found for this container")
+		return
+	}
+
+	dialogs.ShowPortForwardDialog(app, id, name, portInfos, func(result dialogs.PortForwardResult) {
+		app.SetFlashPending(fmt.Sprintf("forwarding %s:%d...", result.Address, result.LocalPort))
+
+		app.RunInBackground(func() {
+			containerIP, err := app.GetDocker().GetContainerIP(id)
+			if err != nil {
+				app.GetTviewApp().QueueUpdateDraw(func() {
+					app.AppendFlashError(fmt.Sprintf("failed to get container IP: %v", err))
+				})
+				return
+			}
+
+			sshHost := app.GetDocker().GetSSHHost()
+			pf := &portforward.PortForward{
+				ContextName:   app.GetDocker().ContextName,
+				SSHHost:       sshHost,
+				ContainerID:   id,
+				ContainerName: name,
+				ContainerIP:   containerIP,
+				ContainerPort: result.ContainerPort,
+				HostPort:      result.HostPort,
+				LocalPort:     result.LocalPort,
+			}
+
+			err = app.GetPortForwardManager().Add(pf)
+			app.GetTviewApp().QueueUpdateDraw(func() {
+				if err != nil {
+					app.AppendFlashError(fmt.Sprintf("port-forward failed: %v", err))
+				} else {
+					app.AppendFlashSuccess(fmt.Sprintf("forwarding %s:%d -> container:%d", result.Address, result.LocalPort, result.ContainerPort))
+					app.RefreshCurrentView()
+				}
+			})
+		})
+	})
+}
+
+func parsePortsString(ports string) []dialogs.PortInfo {
+	if ports == "" {
+		return nil
+	}
+	var result []dialogs.PortInfo
+	seen := make(map[uint16]bool)
+	for _, part := range strings.Split(ports, ", ") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Format: "0.0.0.0:8080->80/tcp" or ":::8080->80/tcp"
+		parts := strings.SplitN(part, "->", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		var cp int
+		fmt.Sscanf(parts[1], "%d", &cp)
+		if cp <= 0 || seen[uint16(cp)] {
+			continue
+		}
+		seen[uint16(cp)] = true
+		var hp int
+		hostPart := parts[0]
+		if idx := strings.LastIndex(hostPart, ":"); idx >= 0 {
+			fmt.Sscanf(hostPart[idx+1:], "%d", &hp)
+		}
+		result = append(result, dialogs.PortInfo{
+			ContainerPort: uint16(cp),
+			HostPort:      uint16(hp),
+			Protocol:      "tcp",
+		})
+	}
+	return result
+}
+
+func ShowPortForwards(app common.AppController, v *view.ResourceView) {
+	if !app.GetDocker().IsSSHContext() {
+		app.AppendFlashError("port-forward is only available on SSH contexts")
+		return
+	}
+
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	name := ""
+	if row, _ := v.Table.GetSelection(); row > 0 && row <= len(v.Data) {
+		if c, ok := asContainer(v.Data[row-1]); ok {
+			name = c.Names
+		}
+	}
+
+	label := id
+	if name != "" {
+		label = name
+	}
+
+	app.SetActiveScope(&common.Scope{
+		Type:       "container",
+		Value:      id,
+		Label:      label,
+		OriginView: styles.TitleContainers,
+	})
+	app.SwitchTo(styles.TitlePortForwards)
 }

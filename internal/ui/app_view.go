@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
@@ -132,7 +133,16 @@ func (a *App) RefreshCurrentView() {
 		var headers []string
 
 		if v.FetchFunc != nil {
-			data, err = v.FetchFunc(a, v)
+			const maxRetries = 2
+			for attempt := 0; attempt <= maxRetries; attempt++ {
+				data, err = v.FetchFunc(a, v)
+				if err == nil || !isTransientSSHError(err) {
+					break
+				}
+				if attempt < maxRetries {
+					time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
+				}
+			}
 			headers = v.Headers
 		}
 
@@ -355,4 +365,15 @@ func (a *App) InspectCurrentSelection() {
 			}
 		})
 	})
+}
+
+func isTransientSSHError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "exit status 255") ||
+		strings.Contains(msg, "Connection reset by peer") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "broken pipe")
 }
