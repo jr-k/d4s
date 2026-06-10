@@ -29,7 +29,7 @@ func NewHelpView(app common.AppController) tview.Primitive {
 		{fmt.Sprintf("[%s]:c[-]        Containers", k), fmt.Sprintf("[%s]:i[-]        Images", k)},
 		{fmt.Sprintf("[%s]:v[-]        Volumes", k), fmt.Sprintf("[%s]:n[-]        Networks", k)},
 		{fmt.Sprintf("[%s]:p[-]        Compose", k), fmt.Sprintf("[%s]:o[-]        Contexts", k)},
-		{fmt.Sprintf("[%s]:g[-]        Plugins", k), fmt.Sprintf("[%s]:pf[-]       PortForwards", k)},
+		{fmt.Sprintf("[%s]:g[-]        Plugins", k), fmt.Sprintf("[%s]:w[-]       PortForwards", k)},
 		{"", ""},
 		{fmt.Sprintf("[%s::b]SWARM", a), ""},
 		{fmt.Sprintf("[%s]:d[-]        Nodes", k), fmt.Sprintf("[%s]:t[-]        Tasks", k)},
