@@ -485,7 +485,7 @@ func (a *App) initUI() {
 		// Don't intercept global keys if a modal/dialog is open
 		frontPage, _ := a.Pages.GetFrontPage()
 		switch frontPage {
-		case "input", "confirm", "form", "picker", "env_editor", "textview", "result", "portforward":
+		case "input", "confirm", "form", "picker", "env_editor", "secret_editor", "mount_editor", "mount_type_picker", "textview", "result", "portforward":
 			return event
 		}
 

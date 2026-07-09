@@ -257,7 +257,9 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	label := ids[0]
 	if len(ids) == 1 {
@@ -286,7 +288,9 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 
 func Env(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	env, err := app.GetDocker().GetContainerEnv(id)
 	if err != nil {
@@ -306,7 +310,9 @@ func Env(app common.AppController, v *view.ResourceView) {
 
 func Stats(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	// Resolve Name
 	name := ""
@@ -325,7 +331,9 @@ func Stats(app common.AppController, v *view.ResourceView) {
 
 func Monitor(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	// Resolve Name
 	name := ""
@@ -342,10 +350,11 @@ func Monitor(app common.AppController, v *view.ResourceView) {
 	app.OpenInspector(inspect.NewMonitorInspector(id, name))
 }
 
-
 func Volumes(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	subject := resolveContainerSubject(v, id)
 
 	app.SetActiveScope(&common.Scope{
@@ -360,7 +369,9 @@ func Volumes(app common.AppController, v *view.ResourceView) {
 
 func Networks(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	subject := resolveContainerSubject(v, id)
 
 	app.SetActiveScope(&common.Scope{
@@ -375,7 +386,9 @@ func Networks(app common.AppController, v *view.ResourceView) {
 
 func Logs(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	subject := resolveContainerSubject(v, id)
 
 	app.OpenInspector(inspect.NewLogInspectorWithConfig(id, subject, "container", app.GetConfig().D4S.Logger))
@@ -383,7 +396,9 @@ func Logs(app common.AppController, v *view.ResourceView) {
 
 func Describe(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	content, err := app.GetDocker().Inspect("container", id)
 	if err != nil {
@@ -510,7 +525,9 @@ func Shell(app common.AppController, id string, asRoot bool) {
 
 func InspectImage(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	var imageID string
 
@@ -542,7 +559,9 @@ func InspectImage(app common.AppController, v *view.ResourceView) {
 
 func Project(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	var projectName string
 

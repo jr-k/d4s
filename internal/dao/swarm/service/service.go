@@ -9,6 +9,7 @@ import (
 	dt "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/gdamore/tcell/v2"
@@ -147,7 +148,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		if idx := strings.LastIndex(imageName, "@"); idx != -1 {
 			imageName = imageName[:idx]
 		}
-		
+
 		// Style tag
 		if idx := strings.LastIndex(imageName, ":"); idx != -1 {
 			tag := imageName[idx:]
@@ -182,7 +183,7 @@ func (m *Manager) Scale(id string, replicas uint64) error {
 	}
 
 	service.Spec.Mode.Replicated.Replicas = &replicas
-	
+
 	// Update
 	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
 	return err
@@ -333,6 +334,19 @@ func (m *Manager) GetNetworks(id string) ([]swarm.NetworkAttachmentConfig, error
 	return service.Spec.TaskTemplate.Networks, nil
 }
 
+func (m *Manager) GetMounts(id string) ([]mount.Mount, error) {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return []mount.Mount{}, nil
+	}
+
+	return service.Spec.TaskTemplate.ContainerSpec.Mounts, nil
+}
+
 func (m *Manager) ListTasks(serviceID string) ([]swarm.Task, error) {
 	filter := filters.NewArgs()
 	filter.Add("service", serviceID)
@@ -347,6 +361,22 @@ func (m *Manager) SetNetworks(id string, networks []swarm.NetworkAttachmentConfi
 	}
 
 	service.Spec.TaskTemplate.Networks = networks
+
+	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
+	return err
+}
+
+func (m *Manager) SetMounts(id string, mounts []mount.Mount) error {
+	service, _, err := m.cli.ServiceInspectWithRaw(m.ctx, id, swarm.ServiceInspectOptions{})
+	if err != nil {
+		return err
+	}
+
+	if service.Spec.TaskTemplate.ContainerSpec == nil {
+		return fmt.Errorf("service has no container spec")
+	}
+
+	service.Spec.TaskTemplate.ContainerSpec.Mounts = mounts
 
 	_, err = m.cli.ServiceUpdate(m.ctx, id, service.Version, service.Spec, swarm.ServiceUpdateOptions{})
 	return err

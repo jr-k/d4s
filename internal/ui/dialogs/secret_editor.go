@@ -113,6 +113,7 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 			content += fmt.Sprintf("%s%s %s[-]\n", color, checkbox, display)
 		}
 		list.SetText(content)
+		list.ScrollTo(currentIndex, 0)
 	}
 	updateList()
 
@@ -129,7 +130,7 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 
 	separator := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 66) + "[-]").
+		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 50) + "[-]").
 		SetTextAlign(tview.AlignCenter)
 	separator.SetBackgroundColor(styles.ColorBlack)
 
@@ -233,7 +234,7 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 			setFocus(1)
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			if len(items) > 0 {
 				setFocus(3)
 			}
@@ -255,7 +256,7 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 			setFocus(2)
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			setFocus(0)
 			return nil
 		}
@@ -279,7 +280,7 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 			}
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			setFocus(1)
 			return nil
 		}
@@ -339,6 +340,9 @@ func ShowSecretEditor(app common.AppController, subject string, items []SecretAt
 			setFocus(0)
 			return nil
 		case tcell.KeyBacktab:
+			setFocus(3)
+			return nil
+		case tcell.KeyUp:
 			setFocus(3)
 			return nil
 		}

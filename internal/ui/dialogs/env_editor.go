@@ -121,6 +121,7 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 			content += fmt.Sprintf("%s%s %s[-]\n", color, checkbox, display)
 		}
 		list.SetText(content)
+		list.ScrollTo(currentIndex, 0)
 	}
 	updateList()
 
@@ -139,7 +140,7 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 	// Separator
 	separator := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 66) + "[-]").
+		SetText("[" + styles.TagDim + "]" + strings.Repeat("─", 50) + "[-]").
 		SetTextAlign(tview.AlignCenter)
 	separator.SetBackgroundColor(styles.ColorBlack)
 
@@ -285,7 +286,7 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 			setFocus(1)
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			if len(items) > 0 {
 				setFocus(3)
 			}
@@ -307,7 +308,7 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 			setFocus(2)
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			setFocus(0)
 			return nil
 		}
@@ -331,7 +332,7 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 			}
 			return nil
 		}
-		if event.Key() == tcell.KeyBacktab {
+		if event.Key() == tcell.KeyBacktab || event.Key() == tcell.KeyUp {
 			setFocus(1)
 			return nil
 		}
@@ -397,6 +398,9 @@ func ShowEnvEditor(app common.AppController, subject string, items []EnvItem, on
 			setFocus(0)
 			return nil
 		case tcell.KeyBacktab:
+			setFocus(3)
+			return nil
+		case tcell.KeyUp:
 			setFocus(3)
 			return nil
 		}

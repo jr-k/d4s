@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
@@ -176,7 +177,7 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("shift-f", "Port-Forward"),
 		common.FormatSCHeader("shift-e", "Edit Env"),
 		common.FormatSCHeader("shift-x", "Attach Secrets"),
-		common.FormatSCHeader("shift-m", "Attach ConfigMaps"),
+		common.FormatSCHeader("shift-m", "Edit Mounts"),
 		common.FormatSCHeader("shift-n", "Attach Networks"),
 		common.FormatSCHeader("shift-i", "Edit Image"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
@@ -216,7 +217,7 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		Configs(app, v)
 		return nil
 	case 'M':
-		ConfigsPicker(app, v)
+		MountsPicker(app, v)
 		return nil
 	case 'E':
 		EnvPicker(app, v)
@@ -857,6 +858,101 @@ func NetworksPicker(app common.AppController, v *view.ResourceView) {
 			})
 		})
 	})
+}
+
+func MountsPicker(app common.AppController, v *view.ResourceView) {
+	id, err := v.GetSelectedID()
+	if err != nil {
+		return
+	}
+
+	subject := resolveServiceSubject(v, id)
+	app.SetFlashPending("loading mounts...")
+
+	app.RunInBackground(func() {
+		allVolumes, err := app.GetDocker().ListVolumes()
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
+		}
+
+		availableVolumes := make(map[string]bool)
+		for _, res := range allVolumes {
+			if vol, ok := res.(dao.Volume); ok {
+				availableVolumes[vol.Name] = true
+			}
+		}
+
+		currentMounts, err := app.GetDocker().GetServiceMounts(id)
+		if err != nil {
+			app.GetTviewApp().QueueUpdateDraw(func() { app.SetFlashError(fmt.Sprintf("%v", err)) })
+			return
+		}
+
+		var items []dialogs.MountAttachItem
+		for _, current := range currentMounts {
+			source := current.Source
+			mountType := string(current.Type)
+			if mountType == "" {
+				mountType = string(mount.TypeVolume)
+			}
+
+			target := current.Target
+			if target == "" && source != "" {
+				target = "/" + source
+			}
+
+			items = append(items, dialogs.MountAttachItem{
+				ID:        mountKey(mountType, source, target),
+				Source:    source,
+				MountType: mountType,
+				Target:    target,
+				Selected:  true,
+			})
+		}
+
+		app.GetTviewApp().QueueUpdateDraw(func() {
+			app.SetFlashText("")
+			dialogs.ShowMountEditor(app, subject, items, availableVolumes, func(selected []dialogs.MountAttachItem) {
+				var newMounts []mount.Mount
+				for _, item := range selected {
+					mountType := strings.ToLower(strings.TrimSpace(item.MountType))
+					if mountType == "" {
+						mountType = string(mount.TypeVolume)
+					}
+
+					source := strings.TrimSpace(item.Source)
+					target := strings.TrimSpace(item.Target)
+					if target == "" && source != "" {
+						target = "/" + source
+					}
+
+					newMounts = append(newMounts, mount.Mount{
+						Type:   mount.Type(mountType),
+						Source: source,
+						Target: target,
+					})
+				}
+
+				app.SetFlashPending("updating service mounts...")
+				app.RunInBackground(func() {
+					err := app.GetDocker().SetServiceMounts(id, newMounts)
+					app.GetTviewApp().QueueUpdateDraw(func() {
+						if err != nil {
+							app.SetFlashError(fmt.Sprintf("%v", err))
+						} else {
+							app.SetFlashSuccess("service mounts updated")
+							app.RefreshCurrentView()
+						}
+					})
+				})
+			})
+		})
+	})
+}
+
+func mountKey(mountType, source, target string) string {
+	return fmt.Sprintf("%s:%s:%s", mountType, source, target)
 }
 
 func EditAction(app common.AppController, v *view.ResourceView) {

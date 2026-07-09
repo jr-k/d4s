@@ -20,22 +20,23 @@ import (
 	clicontext "github.com/docker/cli/cli/context"
 	"github.com/docker/cli/cli/context/docker"
 	dcontainer "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 	"github.com/jr-k/d4s/internal/dao/common"
 	"github.com/jr-k/d4s/internal/dao/compose"
 	"github.com/jr-k/d4s/internal/dao/docker/container"
+	"github.com/jr-k/d4s/internal/dao/docker/dconfig"
 	"github.com/jr-k/d4s/internal/dao/docker/image"
 	"github.com/jr-k/d4s/internal/dao/docker/network"
-	"github.com/jr-k/d4s/internal/dao/docker/dconfig"
 	"github.com/jr-k/d4s/internal/dao/docker/secret"
 	"github.com/jr-k/d4s/internal/dao/docker/stack"
 	"github.com/jr-k/d4s/internal/dao/docker/volume"
 	"github.com/jr-k/d4s/internal/dao/swarm/node"
 	"github.com/jr-k/d4s/internal/dao/swarm/service"
+	"github.com/jr-k/d4s/internal/dao/swarm/task"
 	"github.com/jr-k/d4s/internal/secrets"
 	"github.com/jr-k/d4s/internal/sshutil"
-	"github.com/jr-k/d4s/internal/dao/swarm/task"
 )
 
 // Re-export types for backward compatibility / convenience
@@ -1000,6 +1001,14 @@ func (d *DockerClient) GetServiceNetworks(id string) ([]swarm.NetworkAttachmentC
 
 func (d *DockerClient) SetServiceNetworks(id string, networks []swarm.NetworkAttachmentConfig) error {
 	return d.Service.SetNetworks(id, networks)
+}
+
+func (d *DockerClient) GetServiceMounts(id string) ([]mount.Mount, error) {
+	return d.Service.GetMounts(id)
+}
+
+func (d *DockerClient) SetServiceMounts(id string, mounts []mount.Mount) error {
+	return d.Service.SetMounts(id, mounts)
 }
 
 func (d *DockerClient) ListServicesForSecret(secretID string) ([]common.Resource, error) {

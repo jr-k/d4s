@@ -183,7 +183,7 @@ func ShowMultiPicker(app common.AppController, title string, subject string, ite
 		case tcell.KeyEnter:
 			submit()
 			return nil
-		case tcell.KeyTab, tcell.KeyBacktab:
+		case tcell.KeyTab, tcell.KeyBacktab, tcell.KeyUp:
 			focusOnBtn = false
 			tviewApp.SetFocus(list)
 			return nil
