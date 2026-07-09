@@ -185,17 +185,17 @@ func GetShortcuts() []string {
 
 func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 	app := v.App
-	
+
 	if event.Key() == tcell.KeyCtrlD {
 		DeleteAction(app, v)
 		return nil
 	}
-	
+
 	if event.Key() == tcell.KeyEnter {
 		ViewAction(app, v)
 		return nil
 	}
-	
+
 	switch event.Rune() {
 	case 'e':
 		Env(app, v)
@@ -249,14 +249,16 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		app.InspectCurrentSelection()
 		return nil
 	}
-	
+
 	return event
 }
 
 func ViewAction(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
-	
+	if err != nil {
+		return
+	}
+
 	r, _ := v.Table.GetSelection()
 	name := id
 	nameCell := v.Table.GetCell(r, 1)
@@ -265,20 +267,22 @@ func ViewAction(app common.AppController, v *view.ResourceView) {
 	}
 
 	trimSpaceLeftRightName := strings.TrimSpace(name)
-	
+
 	app.SetActiveScope(&common.Scope{
 		Type:       "service",
 		Value:      trimSpaceLeftRightName,
 		Label:      trimSpaceLeftRightName,
 		OriginView: styles.TitleServices,
 	})
-	
+
 	app.SwitchTo(styles.TitleContainers)
 }
 
 func TasksAction(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	r, _ := v.Table.GetSelection()
 	name := id
@@ -301,7 +305,9 @@ func TasksAction(app common.AppController, v *view.ResourceView) {
 
 func Logs(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	subject := resolveServiceSubject(v, id)
 
 	app.OpenInspector(inspect.NewLogInspectorWithConfig(id, subject, "service", app.GetConfig().D4S.Logger))
@@ -372,7 +378,9 @@ func Ps(app common.AppController, v *view.ResourceView) {
 
 func DeleteAction(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	label := ids[0]
 	if len(ids) == 1 {
@@ -400,8 +408,10 @@ func DeleteAction(app common.AppController, v *view.ResourceView) {
 
 func ScaleAction(app common.AppController, v *view.ResourceView) {
 	id, err := v.GetSelectedID()
-	if err != nil { return }
-	
+	if err != nil {
+		return
+	}
+
 	currentReplicas := ""
 	row, _ := v.Table.GetSelection()
 	if row > 0 && row <= len(v.Data) {
@@ -430,10 +440,12 @@ func RestartAction(app common.AppController, v *view.ResourceView) {
 
 func ScaleZero(app common.AppController, v *view.ResourceView) {
 	ids, err := v.GetSelectedIDs()
-	if err != nil { return }
-	
+	if err != nil {
+		return
+	}
+
 	msg := fmt.Sprintf("You are about to scale %d services to 0 replicas.\nThis will make them unavailable.\nAre you sure?", len(ids))
-	
+
 	dialogs.ShowConfirmation(app, "NO REPLICA", msg, func(force bool) {
 		scaleAction := func(id string) error {
 			return app.GetDocker().ScaleService(id, 0)
@@ -496,9 +508,9 @@ func Scale(app common.AppController, id string, currentReplicas string) {
 			app.SetFlashError("invalid number")
 			return
 		}
-		
+
 		app.SetFlashPending(fmt.Sprintf("scaling %s to %d...", id, replicas))
-		
+
 		app.RunInBackground(func() {
 			err := app.GetDocker().ScaleService(id, replicas)
 			app.GetTviewApp().QueueUpdateDraw(func() {
@@ -540,44 +552,50 @@ func SecretsPicker(app common.AppController, v *view.ResourceView) {
 			return
 		}
 
-		attachedIDs := make(map[string]bool)
+		attachedSecrets := make(map[string]*swarm.SecretReference)
+		currentTargets := make(map[string]string)
 		for _, s := range currentSecrets {
-			attachedIDs[s.SecretID] = true
+			attachedSecrets[s.SecretID] = s
+			if s.File != nil && s.File.Name != "" {
+				currentTargets[s.SecretID] = s.File.Name
+			}
 		}
 
-		var items []dialogs.MultiPickerItem
+		var items []dialogs.SecretAttachItem
 		for _, sec := range allSecrets {
 			s := sec.(dao.Secret)
-			items = append(items, dialogs.MultiPickerItem{
-				ID:       s.ID,
-				Label:    s.Name,
-				Selected: attachedIDs[s.ID],
+			target := currentTargets[s.ID]
+			if target == "" {
+				target = s.Name
+			}
+			_, selected := attachedSecrets[s.ID]
+			items = append(items, dialogs.SecretAttachItem{
+				ID:         s.ID,
+				SecretName: s.Name,
+				Target:     target,
+				Selected:   selected,
 			})
 		}
 
 		app.GetTviewApp().QueueUpdateDraw(func() {
 			app.SetFlashText("")
-			dialogs.ShowMultiPicker(app, "Attach Secrets", subject, items, func(selected []string) {
-				selectedMap := make(map[string]bool)
-				for _, id := range selected {
-					selectedMap[id] = true
-				}
-
+			dialogs.ShowSecretEditor(app, subject, items, func(selected []dialogs.SecretAttachItem) {
 				var newSecretRefs []*swarm.SecretReference
-				for _, sec := range allSecrets {
-					s := sec.(dao.Secret)
-					if selectedMap[s.ID] {
-						newSecretRefs = append(newSecretRefs, &swarm.SecretReference{
-							SecretID:   s.ID,
-							SecretName: s.Name,
-							File: &swarm.SecretReferenceFileTarget{
-								Name: s.Name,
-								UID:  "0",
-								GID:  "0",
-								Mode: 0444,
-							},
-						})
+				for _, s := range selected {
+					target := strings.TrimSpace(s.Target)
+					if target == "" {
+						target = s.SecretName
 					}
+					newSecretRefs = append(newSecretRefs, &swarm.SecretReference{
+						SecretID:   s.ID,
+						SecretName: s.SecretName,
+						File: &swarm.SecretReferenceFileTarget{
+							Name: target,
+							UID:  "0",
+							GID:  "0",
+							Mode: 0444,
+						},
+					})
 				}
 
 				app.SetFlashPending("updating service secrets...")
