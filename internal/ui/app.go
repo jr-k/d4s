@@ -547,6 +547,12 @@ func (a *App) initUI() {
 			return nil
 		}
 
+		if event.Key() == tcell.KeyTab {
+			a.ShowContextPicker()
+			a.UpdateShortcuts()
+			return nil
+		}
+
 		// Delegate to Active View Input Handler
 		if view, ok := a.Views[frontPage]; ok {
 			if view.InputHandler != nil {
@@ -573,10 +579,6 @@ func (a *App) initUI() {
 			return nil
 		case 'C': // Global Copy View
 			a.PerformCopyView()
-			return nil
-		case 'O': // Global Context Picker
-			a.ShowContextPicker()
-			a.UpdateShortcuts()
 			return nil
 		}
 

@@ -199,7 +199,7 @@ When deciding which Docker context to use, D4S applies the following precedence:
 4. `d4s.defaultContext` from `config.yaml`
 5. Docker CLI's own current/default context behavior
 
-If you select the literal `default` context from `shift-o`, D4S uses Docker's normal default context resolution rather than a named custom context.
+If you select the literal `default` context from `tab`, D4S uses Docker's normal default context resolution rather than a named custom context.
 
 All settings are optional and have sensible defaults. Below is a fully documented example:
 
@@ -303,7 +303,7 @@ Port-forwards expose a remote container port on your local machine (`localhost:<
 
 ## Command Palette
 
-Use `shift-o` to open the Docker context picker, switch the current d4s session to a different context, and save that selection as the default context for future d4s launches.
+Use `tab` to open the Docker context picker, switch the current d4s session to a different context, and save that selection as the default context for future d4s launches.
 
 If `DOCKER_HOST` or `DOCKER_CONTEXT` is set in your shell, those environment variables still override the saved D4S default for that launch.
 
