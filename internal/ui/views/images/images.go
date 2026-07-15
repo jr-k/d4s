@@ -46,6 +46,7 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 
 func GetShortcuts() []string {
 	return []string{
+		common.FormatSCHeader("enter", "Containers"),
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("v", "Dive"),
 		common.FormatSCHeader("r", "Pull"),
