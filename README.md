@@ -220,6 +220,12 @@ d4s:
   # Skip checking GitHub for new releases on startup. Default: false
   skipLatestRevCheck: false
 
+  # Optional visible columns and their order for each resource view.
+  # Omit a view to keep its default columns.
+  views:
+    containers:
+      columns: [ID, NAME, STATUS, CPU, MEM, AGE]
+
   # UI settings
   ui:
     # Enable mouse support. Default: false
@@ -252,6 +258,8 @@ d4s:
   shellPod:
     image: ghcr.io/jr-k/nget:latest
 ```
+
+View names are `containers`, `images`, `volumes`, `networks`, `services`, `nodes`, `compose`, `aliases`, `secrets`, `tasks`, `stacks`, `configmaps`, `contexts`, `plugins`, and `portforwards`. Column names are case-insensitive. Unknown or duplicate columns are ignored with a warning; an empty list or a list with no valid columns falls back to the view defaults.
 
 Example: pin D4S to a preferred remote context by default:
 

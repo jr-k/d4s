@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -68,18 +69,28 @@ type ResourceView struct {
 	CurrentScope *common.Scope          // Tracks which scope the current data belongs to
 	IsLoading    bool                   // Navigation lock
 
+	sourceHeaders     []string
+	knownHeaders      []string
+	columnIndexes     []int
+	configuredColumns []string
+	columnsConfigured bool
+	warnedColumns     map[string]bool
+	columnsMu         sync.RWMutex
+
 	// Guard against overlapping background fetches (slow SSH transports)
 	fetchInFlight atomic.Bool
 	fetchGen      atomic.Int64
 
 	// Pinned sort: always applied first (unless user sorts on this column)
-	PinnedSortColumn string // Column name (e.g. "ANON"), resolved dynamically
-	PinnedSortAsc    bool
+	PinnedSortColumn  string // Column name (e.g. "ANON"), resolved dynamically
+	PinnedSortAsc     bool
+	InitialSortColumn string
 
 	// Optional Overrides
 	InputHandler             func(event *tcell.EventKey) *tcell.EventKey
 	ShortcutsFunc            func() []string
 	FetchFunc                func(app common.AppController, view *ResourceView) ([]dao.Resource, error)
+	FetchWithHeadersFunc     func(app common.AppController, view *ResourceView) ([]dao.Resource, []string, error)
 	InspectFunc              func(app common.AppController, id string)
 	RemoveFunc               func(id string, force bool, app common.AppController) error
 	PruneFunc                func(app common.AppController) error
@@ -143,6 +154,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 		SelectedIDs:         make(map[string]bool),
 		ActionStates:        make(map[string]ActionState),
 		transientHighlights: make(map[string]highlightEntry),
+		warnedColumns:       make(map[string]bool),
 		IsLoading:           true,
 	}
 
@@ -201,7 +213,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 					if v.FocusCol < v.ColCount-1 {
 						v.FocusCol++
 						v.renderAll()
-						
+
 						// Smart Scroll Right:
 						// Calculate if the new FocusCol is likely off-screen to the right.
 						_, _, width, _ := tv.GetInnerRect()
@@ -227,7 +239,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 							// We remove columns from the left (incrementing offset) until the focused column fits
 							currentUsed := usedWidth
 							newOffset := cOffset
-							
+
 							for k := cOffset; k < v.FocusCol; k++ {
 								w := 15
 								if k < len(v.ColumnWidths) {
@@ -240,7 +252,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 									break
 								}
 							}
-							
+
 							if newOffset >= v.ColCount {
 								newOffset = v.ColCount - 1
 							}
@@ -255,7 +267,7 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 					if v.FocusCol > 0 {
 						v.FocusCol--
 						v.renderAll()
-						
+
 						// Ensure visibility (Left Edge is easy)
 						// If we move focus left, and it becomes < cOffset, we MUST scroll left to see it.
 						_, cOffset := tv.GetOffset()
@@ -355,10 +367,146 @@ func NewResourceView(app common.AppController, title string) *ResourceView {
 	return v
 }
 
+// SetSourceHeaders records the complete, canonical schema returned by a view.
+// It does not redraw the table; Update applies the configured projection.
+func (v *ResourceView) SetSourceHeaders(headers []string) {
+	v.columnsMu.Lock()
+	v.sourceHeaders = append([]string(nil), headers...)
+	v.columnsMu.Unlock()
+}
+
+// GetSourceHeaders returns a copy of the complete schema for the current scope.
+func (v *ResourceView) GetSourceHeaders() []string {
+	v.columnsMu.RLock()
+	defer v.columnsMu.RUnlock()
+	return append([]string(nil), v.sourceHeaders...)
+}
+
+// SetKnownHeaders records every column a view can expose across scopes.
+func (v *ResourceView) SetKnownHeaders(headers []string) {
+	v.knownHeaders = append([]string(nil), headers...)
+}
+
+// ConfigureColumns sets the optional ordered list of columns to display.
+func (v *ResourceView) ConfigureColumns(columns []string, configured bool) {
+	v.configuredColumns = append([]string(nil), columns...)
+	v.columnsConfigured = configured
+	v.applyHeaders(v.GetSourceHeaders())
+}
+
+func (v *ResourceView) warnColumn(key, message string) {
+	if v.warnedColumns[key] {
+		return
+	}
+	v.warnedColumns[key] = true
+	fmt.Fprintf(os.Stderr, "d4s: warning: view %s: %s\n", strings.ToLower(v.Title), message)
+}
+
+func (v *ResourceView) applyHeaders(headers []string) {
+	v.SetSourceHeaders(headers)
+
+	visibleHeaders := append([]string(nil), headers...)
+	indexes := make([]int, len(headers))
+	for i := range indexes {
+		indexes[i] = i
+	}
+
+	if v.columnsConfigured {
+		visibleHeaders = nil
+		indexes = nil
+		seen := make(map[string]bool)
+
+		if len(v.configuredColumns) == 0 {
+			v.warnColumn("<empty>", "columns is empty; using default columns")
+		}
+
+		for _, configuredName := range v.configuredColumns {
+			name := strings.TrimSpace(configuredName)
+			canonicalName := ""
+			for _, header := range v.knownHeaders {
+				if strings.EqualFold(header, name) {
+					canonicalName = header
+					break
+				}
+			}
+
+			deduplicationKey := strings.ToLower(name)
+			if canonicalName != "" {
+				deduplicationKey = strings.ToLower(canonicalName)
+			}
+			if seen[deduplicationKey] {
+				v.warnColumn("duplicate:"+deduplicationKey, fmt.Sprintf("duplicate column %q ignored", configuredName))
+				continue
+			}
+			seen[deduplicationKey] = true
+
+			if canonicalName == "" {
+				v.warnColumn("unknown:"+deduplicationKey, fmt.Sprintf("unknown column %q ignored", configuredName))
+				continue
+			}
+
+			sourceIndex := -1
+			for i, header := range headers {
+				if strings.EqualFold(header, canonicalName) {
+					sourceIndex = i
+					break
+				}
+			}
+			if sourceIndex < 0 {
+				continue
+			}
+			visibleHeaders = append(visibleHeaders, headers[sourceIndex])
+			indexes = append(indexes, sourceIndex)
+		}
+
+		if len(visibleHeaders) == 0 {
+			visibleHeaders = append([]string(nil), headers...)
+			indexes = make([]int, len(headers))
+			for i := range indexes {
+				indexes[i] = i
+			}
+		}
+	}
+
+	v.Headers = visibleHeaders
+	v.columnIndexes = indexes
+	v.ColCount = len(visibleHeaders)
+}
+
+func (v *ResourceView) visibleColumnIndex(name string) int {
+	for i, header := range v.Headers {
+		if strings.EqualFold(header, name) {
+			return i
+		}
+	}
+	return -1
+}
+
+func (v *ResourceView) sourceColumnIndex(name string) int {
+	for i, header := range v.GetSourceHeaders() {
+		if strings.EqualFold(header, name) {
+			return i
+		}
+	}
+	return -1
+}
+
+// ProjectCells returns the cells visible in the configured order.
+func (v *ResourceView) ProjectCells(item dao.Resource) []string {
+	sourceCells := item.GetCells()
+	cells := make([]string, len(v.columnIndexes))
+	for i, sourceIndex := range v.columnIndexes {
+		if sourceIndex >= 0 && sourceIndex < len(sourceCells) {
+			cells[i] = sourceCells[sourceIndex]
+		}
+	}
+	return cells
+}
+
 // SetLoading shows/hides the loading state
 func (v *ResourceView) SetLoading(loading bool) {
 	v.IsLoading = loading
-	
+
 	// Create loading cell first to avoid nil pointer issues if any
 	loadingCell := tview.NewTableCell("Freshly squeezing data 🍊").
 		SetAlign(tview.AlignCenter).
@@ -375,9 +523,9 @@ func (v *ResourceView) SetLoading(loading bool) {
 		v.ColCount = 0 // Reset col count on loading
 		v.RawData = nil
 		v.SelectedIDs = make(map[string]bool)
-		
+
 		v.Table.SetTitle(fmt.Sprintf(" [%s::b]%s[-::-] ~ [%s]loading...[-] ", styles.TagCyan, strings.ToLower(v.Title), styles.TagFg))
-		
+
 		// Use Safe SetCell
 		func() {
 			defer func() {
@@ -393,6 +541,9 @@ func (v *ResourceView) SetLoading(loading bool) {
 // Update triggers a refresh with new data
 func (v *ResourceView) Update(headers []string, data []dao.Resource) {
 	v.IsLoading = false
+	wasUninitialized := v.SortCol == -1
+	previousSortColumn := v.GetCurrentColumnSorted()
+	previousFocusColumn := v.GetCurrentColumnFocused()
 
 	// Preserve items in ActionState (e.g. Deleting) if they are missing from new data
 	// This ensures we see the red "deleting" state even if the backend removed it already
@@ -412,38 +563,48 @@ func (v *ResourceView) Update(headers []string, data []dao.Resource) {
 		}
 	}
 
-	v.Headers = headers
-	v.ColCount = len(headers)
+	v.applyHeaders(headers)
 	v.RawData = data
 
-	// Resolve default sort column if not set
-	if v.SortCol == -1 && len(data) > 0 {
-		defaultCol := data[0].GetDefaultSortColumn()
-		v.SortCol = 0 // Fallback
-		
-		for i, h := range headers {
-			if strings.EqualFold(h, defaultCol) {
-				v.SortCol = i
-				break
+	if len(v.Headers) > 0 {
+		if wasUninitialized && len(data) == 0 {
+			// Keep the sort unresolved until a resource can provide its default.
+			v.SortCol = -1
+		} else {
+			if !wasUninitialized && previousSortColumn != "" {
+				v.SortCol = v.visibleColumnIndex(previousSortColumn)
 			}
-		}
-		
-		// Optional: Smart sort direction based on column?
-		// e.g. Created -> Desc
-		if strings.EqualFold(defaultCol, "Created") || strings.EqualFold(defaultCol, "Age") {
-			v.SortAsc = false
+			if v.SortCol < 0 || v.SortCol >= len(v.Headers) {
+				v.SortCol = 0
+				if len(data) > 0 {
+					defaultCol := data[0].GetDefaultSortColumn()
+					if v.InitialSortColumn != "" {
+						defaultCol = v.InitialSortColumn
+					}
+					if index := v.visibleColumnIndex(defaultCol); index >= 0 {
+						v.SortCol = index
+					} else if wasUninitialized && v.InitialSortColumn != "" {
+						v.SortAsc = true
+					}
+					if v.InitialSortColumn == "" &&
+						(strings.EqualFold(defaultCol, "Created") || strings.EqualFold(defaultCol, "Age")) {
+						v.SortAsc = false
+					}
+				}
+			}
 		}
 
-		// Also set FocusCol to default column if not manually set/modified yet
-		// We assume initial FocusCol is 0, so if we are at init, we check this.
-		// However, user might have navigated. But since this block runs only when SortCol is -1 (init), it's safe.
-		defaultFocus := data[0].GetDefaultColumn()
-		for i, h := range headers {
-			if strings.EqualFold(h, defaultFocus) {
-				v.FocusCol = i
-				break
-			}
+		if !wasUninitialized && previousFocusColumn != "" {
+			v.FocusCol = v.visibleColumnIndex(previousFocusColumn)
+		} else if len(data) > 0 {
+			v.FocusCol = v.visibleColumnIndex(data[0].GetDefaultColumn())
 		}
+		if v.FocusCol < 0 || v.FocusCol >= len(v.Headers) {
+			v.FocusCol = 0
+		}
+	} else {
+		v.SortCol = -1
+		v.FocusCol = 0
 	}
 
 	v.Refilter()
@@ -462,7 +623,7 @@ func (v *ResourceView) Refilter() {
 	for _, item := range v.RawData {
 		match := true
 
-		cells := item.GetCells()
+		cells := v.ProjectCells(item)
 
 		// User Filter
 		if v.Filter != "" {
@@ -481,7 +642,7 @@ func (v *ResourceView) Refilter() {
 			} else {
 				lowerFilter := strings.ToLower(filterTerm)
 				contains := false
-				
+
 				// 1. Check ID first (if available) - Matches Task 2
 				if strings.Contains(strings.ToLower(item.GetID()), lowerFilter) {
 					contains = true
@@ -515,29 +676,31 @@ func (v *ResourceView) Refilter() {
 	}
 
 	// 2. Sort Data
-	// Resolve pinned sort column index (if configured)
+	// Resolve pinned sort column in the canonical schema so it can remain active
+	// even when the configured view hides it.
 	pinnedCol := -1
 	if v.PinnedSortColumn != "" {
-		for i, h := range v.Headers {
-			if strings.EqualFold(h, v.PinnedSortColumn) {
-				pinnedCol = i
-				break
-			}
-		}
+		pinnedCol = v.sourceColumnIndex(v.PinnedSortColumn)
 	}
 
 	sort.SliceStable(filtered, func(i, j int) bool {
 		if v.SortCol < 0 {
 			return i < j
 		}
-		rowI := filtered[i].GetCells()
-		rowJ := filtered[j].GetCells()
+		rowI := v.ProjectCells(filtered[i])
+		rowJ := v.ProjectCells(filtered[j])
 
 		// Apply pinned sort first (unless user explicitly sorts on the pinned column)
-		if pinnedCol >= 0 && pinnedCol != v.SortCol &&
-			pinnedCol < len(rowI) && pinnedCol < len(rowJ) {
-			pI := rowI[pinnedCol]
-			pJ := rowJ[pinnedCol]
+		userSourceCol := -1
+		if v.SortCol >= 0 && v.SortCol < len(v.columnIndexes) {
+			userSourceCol = v.columnIndexes[v.SortCol]
+		}
+		sourceRowI := filtered[i].GetCells()
+		sourceRowJ := filtered[j].GetCells()
+		if pinnedCol >= 0 && pinnedCol != userSourceCol &&
+			pinnedCol < len(sourceRowI) && pinnedCol < len(sourceRowJ) {
+			pI := sourceRowI[pinnedCol]
+			pJ := sourceRowJ[pinnedCol]
 			lessIJ := common.CompareValues(pI, pJ)
 			lessJI := common.CompareValues(pJ, pI)
 			if lessIJ || lessJI { // values differ on pinned column
@@ -566,11 +729,8 @@ func (v *ResourceView) Refilter() {
 			return lessJI
 		}
 
-		// Tiebreaker: sort by ID (column 0) ASC for stable ordering
-		if len(rowI) > 0 && len(rowJ) > 0 {
-			return common.CompareValues(rowI[0], rowJ[0])
-		}
-		return i < j
+		// Tiebreaker: use the resource ID, regardless of visible column order.
+		return common.CompareValues(filtered[i].GetID(), filtered[j].GetID())
 	})
 
 	v.Data = filtered // Update view data with sorted/filtered list
@@ -595,7 +755,7 @@ func (v *ResourceView) recalculateColumnWidths() {
 	}
 
 	for i := 0; i < limit; i++ {
-		cells := v.Data[i].GetCells()
+		cells := v.ProjectCells(v.Data[i])
 		for j, text := range cells {
 			if j < len(v.ColumnWidths) {
 				// Strip tags for accurate length
@@ -630,7 +790,7 @@ func (v *ResourceView) renderAll() {
 	if v.Table == nil {
 		return
 	}
-	
+
 	v.Table.Clear()
 
 	v.processHighlightRequests()
@@ -668,7 +828,7 @@ func (v *ResourceView) renderAll() {
 
 	// 4. Set Data
 	for i, item := range v.Data {
-		cells := item.GetCells()
+		cells := v.ProjectCells(item)
 		rowIndex := i + 1
 
 		for j, text := range cells {
@@ -763,8 +923,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 	statusColor, _ := item.GetStatusColor()
 	id := item.GetID()
 	isSelected := v.SelectedIDs[id]
-	
-	
+
 	if entry, ok := v.getTransientHighlight(id); ok {
 		statusColor = entry.fg
 	} else {
@@ -774,23 +933,23 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 		}
 	}
 
-	cells := item.GetCells()
-		for j, text := range cells {
-			// Check bounds first to avoid panic in GetCell
-			if j >= v.Table.GetColumnCount() {
-				break
+	cells := v.ProjectCells(item)
+	for j, text := range cells {
+		// Check bounds first to avoid panic in GetCell
+		if j >= v.Table.GetColumnCount() {
+			break
+		}
+
+		cell := v.Table.GetCell(rowIndex, j)
+		if cell == nil {
+			// Try to re-create cell if missing (rare but possible in race)
+			if j < v.Table.GetColumnCount() {
+				cell = tview.NewTableCell(" " + text + " ")
+				v.Table.SetCell(rowIndex, j, cell)
+			} else {
+				continue
 			}
-			
-			cell := v.Table.GetCell(rowIndex, j)
-			if cell == nil {
-				// Try to re-create cell if missing (rare but possible in race)
-				if j < v.Table.GetColumnCount() {
-					cell = tview.NewTableCell(" " + text + " ")
-					v.Table.SetCell(rowIndex, j, cell)
-				} else {
-					continue
-				}
-			}
+		}
 
 		displayText := text
 
@@ -798,7 +957,7 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 		if j == 0 && isSelected {
 			displayText = "*" + displayText
 		}
-		
+
 		headerName := ""
 		if j < len(v.Headers) {
 			headerName = strings.ToUpper(v.Headers[j])
@@ -812,13 +971,11 @@ func (v *ResourceView) updateRowStyle(rowIndex int, item dao.Resource) {
 		}
 
 		cell.SetText(" " + displayText + " ")
-		
+
 		// Style Application
 		cell.SetTextColor(statusColor)
 
-		
 		cell.SetBackgroundColor(styles.ColorBg)
-	
 
 		if isSelected {
 			cell.SetBackgroundColor(styles.ColorBg)
@@ -892,7 +1049,7 @@ func (v *ResourceView) processHighlightRequests() {
 		for i, res := range v.Data {
 			if req.match(res) {
 				v.addTransientHighlight(res.GetID(), req.bg, req.fg, req.duration)
-				
+
 				// Focus the item (select row)
 				v.Table.Select(i+1, 0)
 			}

@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -246,6 +248,61 @@ func (a *App) StopAutoRefresh() {
 	}
 }
 
+var configurableViewKeys = map[string]struct{}{
+	"aliases":      {},
+	"compose":      {},
+	"configmaps":   {},
+	"containers":   {},
+	"contexts":     {},
+	"images":       {},
+	"networks":     {},
+	"nodes":        {},
+	"plugins":      {},
+	"portforwards": {},
+	"secrets":      {},
+	"services":     {},
+	"stacks":       {},
+	"tasks":        {},
+	"volumes":      {},
+}
+
+func (a *App) configureViewColumns(key string, resourceView *view.ResourceView, headers []string, knownHeaders ...[]string) {
+	resourceView.SetSourceHeaders(headers)
+	resourceView.SetKnownHeaders(headers)
+	if len(knownHeaders) > 0 {
+		resourceView.SetKnownHeaders(knownHeaders[0])
+	}
+
+	var matchingKeys []string
+	for configuredKey := range a.Cfg.D4S.Views {
+		if strings.EqualFold(strings.TrimSpace(configuredKey), key) {
+			matchingKeys = append(matchingKeys, configuredKey)
+		}
+	}
+	sort.Strings(matchingKeys)
+
+	var columns []string
+	configured := false
+	if len(matchingKeys) > 0 {
+		selectedKey := matchingKeys[0]
+		columns = a.Cfg.D4S.Views[selectedKey].Columns
+		configured = columns != nil
+		for _, duplicateKey := range matchingKeys[1:] {
+			fmt.Fprintf(os.Stderr, "d4s: warning: duplicate view configuration %q ignored\n", duplicateKey)
+		}
+	}
+	resourceView.ConfigureColumns(columns, configured)
+}
+
+func (a *App) warnUnknownViewConfigs() {
+	for configuredKey := range a.Cfg.D4S.Views {
+		key := strings.ToLower(strings.TrimSpace(configuredKey))
+		if _, ok := configurableViewKeys[key]; !ok {
+			fmt.Fprintf(os.Stderr, "d4s: warning: unknown view %q ignored\n", configuredKey)
+		}
+	}
+}
+
 func (a *App) initUI() {
 	// 1. Header
 	a.Header = header.NewHeaderComponent(a.Cfg.D4S.UI.Logoless)
@@ -256,7 +313,7 @@ func (a *App) initUI() {
 	vContainers.ShortcutsFunc = containers.GetShortcuts
 	vContainers.FetchFunc = containers.Fetch
 	vContainers.RemoveFunc = containers.Remove
-	vContainers.Headers = containers.Headers
+	a.configureViewColumns("containers", vContainers, containers.Headers)
 	vContainers.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return containers.InputHandler(vContainers, event)
 	}
@@ -269,10 +326,10 @@ func (a *App) initUI() {
 	vImages.InspectFunc = images.Inspect
 	vImages.RemoveFunc = images.Remove
 	vImages.PruneFunc = images.Prune
-	vImages.Headers = images.Headers
+	a.configureViewColumns("images", vImages, images.Headers)
 
-	// Default Sort: Containers (Index 3) DESC
-	vImages.SortCol = 3
+	// Default Sort: Containers DESC
+	vImages.InitialSortColumn = "CONTAINERS"
 	vImages.SortAsc = false
 
 	vImages.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
@@ -283,11 +340,11 @@ func (a *App) initUI() {
 	// Volumes
 	vVolumes := view.NewResourceView(a, styles.TitleVolumes)
 	vVolumes.ShortcutsFunc = volumes.GetShortcuts
-	vVolumes.FetchFunc = volumes.Fetch
+	vVolumes.FetchWithHeadersFunc = volumes.Fetch
 	vVolumes.InspectFunc = volumes.Inspect
 	vVolumes.RemoveFunc = volumes.Remove
 	vVolumes.PruneFunc = volumes.Prune
-	vVolumes.Headers = volumes.Headers
+	a.configureViewColumns("volumes", vVolumes, volumes.Headers, volumes.AllHeaders)
 	vVolumes.PinnedSortColumn = "ANON"
 	vVolumes.PinnedSortAsc = true
 	vVolumes.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
@@ -302,7 +359,7 @@ func (a *App) initUI() {
 	vNetworks.InspectFunc = networks.Inspect
 	vNetworks.RemoveFunc = networks.Remove
 	vNetworks.PruneFunc = networks.Prune
-	vNetworks.Headers = networks.Headers
+	a.configureViewColumns("networks", vNetworks, networks.Headers)
 	vNetworks.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return networks.InputHandler(vNetworks, event)
 	}
@@ -314,7 +371,7 @@ func (a *App) initUI() {
 	vServices.FetchFunc = services.Fetch
 	vServices.InspectFunc = services.Inspect
 	vServices.RemoveFunc = services.Remove
-	vServices.Headers = services.Headers
+	a.configureViewColumns("services", vServices, services.Headers)
 	vServices.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return services.InputHandler(vServices, event)
 	}
@@ -326,7 +383,7 @@ func (a *App) initUI() {
 	vNodes.FetchFunc = nodes.Fetch
 	vNodes.InspectFunc = nodes.Inspect
 	vNodes.RemoveFunc = nodes.Remove
-	vNodes.Headers = nodes.Headers
+	a.configureViewColumns("nodes", vNodes, nodes.Headers)
 	vNodes.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return nodes.InputHandler(vNodes, event)
 	}
@@ -337,7 +394,7 @@ func (a *App) initUI() {
 	vCompose.ShortcutsFunc = compose.GetShortcuts
 	vCompose.FetchFunc = compose.Fetch
 	vCompose.InspectFunc = compose.Inspect
-	vCompose.Headers = compose.Headers
+	a.configureViewColumns("compose", vCompose, compose.Headers)
 	vCompose.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return compose.InputHandler(vCompose, event)
 	}
@@ -345,7 +402,7 @@ func (a *App) initUI() {
 
 	// Aliases
 	vAliases := view.NewResourceView(a, styles.TitleAliases)
-	vAliases.Headers = aliases.Headers
+	a.configureViewColumns("aliases", vAliases, aliases.Headers)
 	vAliases.FetchFunc = aliases.Fetch
 	vAliases.ShortcutsFunc = aliases.GetShortcuts
 	vAliases.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
@@ -359,7 +416,7 @@ func (a *App) initUI() {
 	vSecrets.FetchFunc = secrets.Fetch
 	vSecrets.InspectFunc = secrets.Inspect
 	vSecrets.RemoveFunc = secrets.Remove
-	vSecrets.Headers = secrets.Headers
+	a.configureViewColumns("secrets", vSecrets, secrets.Headers)
 	vSecrets.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return secrets.InputHandler(vSecrets, event)
 	}
@@ -370,7 +427,7 @@ func (a *App) initUI() {
 	vTasks.ShortcutsFunc = tasks.GetShortcuts
 	vTasks.FetchFunc = tasks.Fetch
 	vTasks.InspectFunc = tasks.Inspect
-	vTasks.Headers = tasks.Headers
+	a.configureViewColumns("tasks", vTasks, tasks.Headers)
 	vTasks.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return tasks.InputHandler(vTasks, event)
 	}
@@ -381,7 +438,7 @@ func (a *App) initUI() {
 	vStacks.ShortcutsFunc = stacks.GetShortcuts
 	vStacks.FetchFunc = stacks.Fetch
 	vStacks.InspectFunc = stacks.Inspect
-	vStacks.Headers = stacks.Headers
+	a.configureViewColumns("stacks", vStacks, stacks.Headers)
 	vStacks.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return stacks.InputHandler(vStacks, event)
 	}
@@ -393,7 +450,7 @@ func (a *App) initUI() {
 	vConfigs.FetchFunc = configs.Fetch
 	vConfigs.InspectFunc = configs.Inspect
 	vConfigs.RemoveFunc = configs.Remove
-	vConfigs.Headers = configs.Headers
+	a.configureViewColumns("configmaps", vConfigs, configs.Headers)
 	vConfigs.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return configs.InputHandler(vConfigs, event)
 	}
@@ -405,7 +462,7 @@ func (a *App) initUI() {
 	vContexts.FetchFunc = contexts.Fetch
 	vContexts.InspectFunc = contexts.Inspect
 	vContexts.RemoveFunc = contexts.Remove
-	vContexts.Headers = contexts.Headers
+	a.configureViewColumns("contexts", vContexts, contexts.Headers)
 	vContexts.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return contexts.InputHandler(vContexts, event)
 	}
@@ -417,7 +474,7 @@ func (a *App) initUI() {
 	vPlugins.FetchFunc = plugins.Fetch
 	vPlugins.InspectFunc = plugins.Inspect
 	vPlugins.RemoveFunc = plugins.Remove
-	vPlugins.Headers = plugins.Headers
+	a.configureViewColumns("plugins", vPlugins, plugins.Headers)
 	vPlugins.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return plugins.InputHandler(vPlugins, event)
 	}
@@ -427,11 +484,13 @@ func (a *App) initUI() {
 	vPortForwards := view.NewResourceView(a, styles.TitlePortForwards)
 	vPortForwards.ShortcutsFunc = portforwards.GetShortcuts
 	vPortForwards.FetchFunc = portforwards.Fetch
-	vPortForwards.Headers = portforwards.Headers
+	a.configureViewColumns("portforwards", vPortForwards, portforwards.Headers)
 	vPortForwards.InputHandler = func(event *tcell.EventKey) *tcell.EventKey {
 		return portforwards.InputHandler(vPortForwards, event)
 	}
 	a.Views[styles.TitlePortForwards] = vPortForwards
+
+	a.warnUnknownViewConfigs()
 
 	for title, view := range a.Views {
 		a.Pages.AddPage(title, view.Table, true, false)

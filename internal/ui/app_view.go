@@ -13,7 +13,7 @@ import (
 
 func (a *App) RefreshCurrentView() {
 	page, _ := a.Pages.GetFrontPage()
-	
+
 	// Handle Inspector Filtering
 	if page == "inspect" {
 		if a.ActiveInspector != nil {
@@ -44,7 +44,7 @@ func (a *App) RefreshCurrentView() {
 			if baseView == "" {
 				baseView = "containers" // Default fallback
 			}
-			
+
 			scope := a.GetActiveScope()
 			// If we have ActiveScope, it means we are in drilled down mode
 			if scope != nil {
@@ -59,7 +59,7 @@ func (a *App) RefreshCurrentView() {
 				}
 				breadcrumbs = append(breadcrumbs, baseView)
 				breadcrumbs = append(breadcrumbs, actionName)
-				
+
 				status += " "
 				for i, s := range breadcrumbs {
 					color := styles.TagCyan
@@ -79,7 +79,7 @@ func (a *App) RefreshCurrentView() {
 			} else {
 				// E.g. <containers> <logs>
 				scopes := []string{baseView, actionName}
-				
+
 				status += " "
 				for i, s := range scopes {
 					color := styles.TagCyan
@@ -111,20 +111,20 @@ func (a *App) RefreshCurrentView() {
 		"form", "picker", "portforward", "env_editor":
 		return
 	}
-	
+
 	v, ok := a.Views[page]
 	if !ok || v == nil {
 		return
 	}
-	
+
 	// 1. Immediate Updates (Optimistic UI)
 	// UpdateShortcuts modifies the UI. Must be called from main thread.
-	// Since RefreshCurrentView is sometimes called from valid UI context (SwitchTo) 
+	// Since RefreshCurrentView is sometimes called from valid UI context (SwitchTo)
 	// and sometimes from BG (Ticker -> QueueUpdateDraw), we assume we are in Main Thread here IF caller respected rules.
 	// BUT, we previously wrapped Ticker calls in QueueUpdateDraw.
 	// So UpdateShortcuts is safe here.
 	a.UpdateShortcuts()
-	
+
 	a.RunInBackground(func() {
 		if a.IsPaused() {
 			return
@@ -142,10 +142,15 @@ func (a *App) RefreshCurrentView() {
 		var data []dao.Resource
 		var headers []string
 
-		if v.FetchFunc != nil {
+		if v.FetchWithHeadersFunc != nil || v.FetchFunc != nil {
 			const maxRetries = 2
 			for attempt := 0; attempt <= maxRetries; attempt++ {
-				data, err = v.FetchFunc(a, v)
+				if v.FetchWithHeadersFunc != nil {
+					data, headers, err = v.FetchWithHeadersFunc(a, v)
+				} else {
+					data, err = v.FetchFunc(a, v)
+					headers = v.GetSourceHeaders()
+				}
 				if err == nil || !isTransientSSHError(err) {
 					break
 				}
@@ -153,7 +158,6 @@ func (a *App) RefreshCurrentView() {
 					time.Sleep(time.Duration(500*(attempt+1)) * time.Millisecond)
 				}
 			}
-			headers = v.Headers
 		}
 
 		// Check pause again after fetching (fetching can take time)
@@ -186,7 +190,7 @@ func (a *App) RefreshCurrentView() {
 				// Show actual title
 				title := a.formatViewTitle(page, fmt.Sprintf("%d", len(v.Data)), filter)
 				a.updateViewTitle(v, title)
-				
+
 				v.Update(headers, data)
 
 				// Only update flash if not error
@@ -229,7 +233,7 @@ func (a *App) RefreshCurrentView() {
 				if filter != "" {
 					status += fmt.Sprintf(` [%s:%s] <filter: %s> [-:-]`, styles.TagBg, styles.TagFilter, filter)
 				}
-				
+
 				// Only update flash if not locked by temporary message and crumbs are enabled
 				if !a.IsFlashLocked() && !a.Cfg.D4S.UI.Crumbsless {
 					a.Flash.SetText(status)
@@ -256,7 +260,7 @@ func (a *App) preloadViews() {
 		if title == initialView {
 			continue // Already being refreshed by StartAutoRefresh
 		}
-		if v.FetchFunc == nil {
+		if v.FetchWithHeadersFunc == nil && v.FetchFunc == nil {
 			continue
 		}
 
@@ -264,12 +268,18 @@ func (a *App) preloadViews() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			data, err := v.FetchFunc(a, v)
+			var data []dao.Resource
+			var headers []string
+			var err error
+			if v.FetchWithHeadersFunc != nil {
+				data, headers, err = v.FetchWithHeadersFunc(a, v)
+			} else {
+				data, err = v.FetchFunc(a, v)
+				headers = v.GetSourceHeaders()
+			}
 			if err != nil {
 				return // Silently ignore preload errors
 			}
-
-			headers := v.Headers // Capture after fetch (FetchFunc may update headers)
 
 			a.SafeQueueUpdateDraw(func() {
 				// Don't overwrite if the user already navigated here
@@ -291,35 +301,35 @@ func (a *App) preloadViews() {
 
 func (a *App) formatViewTitle(viewName string, countStr string, filter string) string {
 	viewName = strings.ToLower(viewName)
-	
+
 	// Default simple title
 	title := fmt.Sprintf(" [%s::b]%s[%s][[%s]%s[%s]] ", styles.TagCyan, viewName, styles.TagCyan, styles.TagFg, countStr, styles.TagCyan)
-	
+
 	// Dynamic recursive breadcrumb
 	scope := a.GetActiveScope()
 	if scope != nil {
 		var parts []string
-		
+
 		// Walk up the stack
 		curr := scope
 		for curr != nil {
 			cleanLabel := strings.ReplaceAll(curr.Label, "@", fmt.Sprintf("[%s] @ [%s]", styles.TagFg, styles.TagPink))
 			origin := strings.ToLower(curr.OriginView)
-			
+
 			// Format: "origin(label)"
 			part := fmt.Sprintf("[%s::b]%s([-][%s]%s[%s])", styles.TagCyan, origin, styles.TagPink, cleanLabel, styles.TagCyan)
 			// Prepend to list (since we walk backwards)
 			parts = append([]string{part}, parts...)
-			
+
 			curr = curr.Parent
 		}
-		
+
 		// Append current view name
 		parts = append(parts, fmt.Sprintf("[%s]%s[%s][[%s]%s[%s]]", styles.TagCyan, viewName, styles.TagCyan, styles.TagFg, countStr, styles.TagCyan))
-		
+
 		title = " " + strings.Join(parts, " > ") + " "
 	}
-	
+
 	if filter != "" {
 		title += fmt.Sprintf(" [%s][[%s]Filter: [::b]%s[::-][%s]] ", styles.TagCyan, styles.TagFg, filter, styles.TagCyan)
 	}
@@ -349,10 +359,10 @@ func (a *App) InspectCurrentSelection() {
 	if dataIndex < 0 || dataIndex >= len(view.Data) {
 		return
 	}
-	
+
 	resource := view.Data[dataIndex]
 	id := resource.GetID()
-	
+
 	if view.InspectFunc != nil {
 		view.InspectFunc(a, id)
 		// InspectFunc typically opens a new modal or changes view.
@@ -360,21 +370,21 @@ func (a *App) InspectCurrentSelection() {
 		a.UpdateShortcuts()
 		return
 	}
-	
+
 	resourceType := "container"
 	switch page {
-		case styles.TitleImages:
-			resourceType = "image"
-		case styles.TitleVolumes:
-			resourceType = "volume"
-		case styles.TitleNetworks:
-			resourceType = "network"
-		case styles.TitleServices:
-			resourceType = "service"
-		case styles.TitleNodes:
-			resourceType = "node"
-		case styles.TitleCompose:
-			resourceType = "compose"
+	case styles.TitleImages:
+		resourceType = "image"
+	case styles.TitleVolumes:
+		resourceType = "volume"
+	case styles.TitleNetworks:
+		resourceType = "network"
+	case styles.TitleServices:
+		resourceType = "service"
+	case styles.TitleNodes:
+		resourceType = "node"
+	case styles.TitleCompose:
+		resourceType = "compose"
 	}
 
 	inspector := inspect.NewTextInspector("Inspect", id, fmt.Sprintf(" [%s]Loading %s...\n", styles.TagAccent, resourceType), "json")

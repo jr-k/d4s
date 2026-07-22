@@ -22,18 +22,18 @@ import (
 )
 
 var Headers = []string{"NAME", "DRIVER", "SCOPE", "USED BY", "MOUNTPOINT", "CREATED", "ANON"}
+var ContainerHeaders = []string{"NAME", "TYPE", "DRIVER", "SCOPE", "DESTINATION", "MOUNTPOINT", "CREATED", "ANON"}
+var AllHeaders = append(append([]string(nil), Headers...), "TYPE", "DESTINATION")
 
-func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, error) {
+func Fetch(app common.AppController, _ *view.ResourceView) ([]dao.Resource, []string, error) {
 	scope := app.GetActiveScope()
 	if scope != nil && scope.Type == "container" {
-		// Switch headers for Container Scope
-		v.Headers = []string{"NAME", "TYPE", "DRIVER", "SCOPE", "DESTINATION", "MOUNTPOINT", "CREATED", "ANON"}
-		return app.GetDocker().ListVolumesForContainer(scope.Value)
+		data, err := app.GetDocker().ListVolumesForContainer(scope.Value)
+		return data, ContainerHeaders, err
 	}
-	
-	// Reset headers for Global Scope
-	v.Headers = Headers
-	return app.GetDocker().ListVolumes()
+
+	data, err := app.GetDocker().ListVolumes()
+	return data, Headers, err
 }
 
 func GetShortcuts() []string {

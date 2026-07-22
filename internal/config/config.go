@@ -22,7 +22,8 @@ type D4SConfig struct {
 	DefaultView      string  `yaml:"defaultView"`
 	NoExitOnCtrlC    bool    `yaml:"noExitOnCtrlC"`
 
-	UI UIConfig `yaml:"ui"`
+	UI    UIConfig              `yaml:"ui"`
+	Views map[string]ViewConfig `yaml:"views,omitempty"`
 
 	SkipLatestRevCheck bool `yaml:"skipLatestRevCheck"`
 
@@ -37,6 +38,10 @@ type UIConfig struct {
 	Crumbsless  bool   `yaml:"crumbsless"`
 	Invert      bool   `yaml:"invert"`
 	Skin        string `yaml:"skin"`
+}
+
+type ViewConfig struct {
+	Columns []string `yaml:"columns,omitempty"`
 }
 
 type LoggerConfig struct {

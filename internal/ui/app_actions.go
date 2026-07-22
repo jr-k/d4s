@@ -57,7 +57,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 			for _, id := range ids {
 				view.ClearActionState(id)
 			}
-			
+
 			// Resume AutoRefresh first
 			a.StartAutoRefresh()
 
@@ -71,7 +71,7 @@ func (a *App) PerformAction(action func(id string) error, actionName string, col
 				}
 				// Show success message for 3 seconds
 				a.AppendFlashSuccess(fmt.Sprintf("%s %d item%s done", actionName, len(ids), plural))
-				
+
 				// Clear selection on success?
 				view.SelectedIDs = make(map[string]bool)
 				delay := view.PopRefreshDelay()
@@ -217,7 +217,7 @@ func (a *App) PerformCopyView() {
 
 	// Rows
 	for _, item := range view.Data {
-		cells := item.GetCells()
+		cells := view.ProjectCells(item)
 		cleaned := make([]string, len(cells))
 		for i, c := range cells {
 			cleaned[i] = common.StripColorTags(c)
