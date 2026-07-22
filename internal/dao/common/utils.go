@@ -17,12 +17,26 @@ func ShortenPath(path string) string {
 	return path
 }
 
-func ParseStatus(s string) (status, age string) {
+func ParseStatus(s string) (status, age, health string) {
 	s = strings.TrimSpace(s)
-	
+
 	if strings.HasPrefix(s, "Up") {
 		status = "Up"
-		rest := strings.TrimPrefix(s, "Up ")
+		rest := strings.TrimSpace(strings.TrimPrefix(s, "Up"))
+
+		// Docker appends health and paused states to running containers:
+		// "Up 3 minutes (healthy)", "Up 2 hours (Paused)".
+		if open := strings.LastIndex(rest, " ("); open >= 0 && strings.HasSuffix(rest, ")") {
+			detail := strings.TrimSpace(rest[open+2 : len(rest)-1])
+			rest = strings.TrimSpace(rest[:open])
+			if strings.EqualFold(detail, "paused") {
+				status = "Paused"
+			} else if detail != "" {
+				health = detail
+				status = fmt.Sprintf("Up (%s)", detail)
+			}
+		}
+
 		age = ShortenDuration(rest)
 	} else if strings.HasPrefix(s, "Exited") {
 		// "Exited (0) 5 minutes ago"
@@ -38,14 +52,6 @@ func ParseStatus(s string) (status, age string) {
 		status = "Created"
 		age = "-"
 	} else if strings.HasPrefix(s, "Paused") {
-		// "Up 2 hours (Paused)"
-		if strings.Contains(s, "(Paused)") {
-			status = "Paused"
-			rest := strings.TrimPrefix(s, "Up ")
-			rest = strings.TrimSuffix(rest, " (Paused)")
-			age = ShortenDuration(rest)
-			return
-		}
 		status = "Paused"
 		age = "-"
 	} else if strings.HasPrefix(s, "Exiting") { // Explicitly handle Exiting
@@ -66,29 +72,43 @@ func ShortenDuration(d string) string {
 	if strings.Contains(d, "less than") {
 		return "1s"
 	}
-	
+
 	// Clean up verbose words
 	d = strings.ReplaceAll(d, "about ", "")
 	d = strings.ReplaceAll(d, "an ", "1 ")
 	d = strings.ReplaceAll(d, "a ", "1 ")
 	d = strings.TrimSuffix(d, " ago")
-	
+
 	parts := strings.Fields(d)
 	if len(parts) >= 2 {
 		val := parts[0]
 		unit := parts[1]
-		
+
 		if val == "0" && strings.HasPrefix(unit, "second") {
 			return "1s"
 		}
 
-		if strings.HasPrefix(unit, "second") { return val + "s" }
-		if strings.HasPrefix(unit, "minute") { return val + "m" }
-		if strings.HasPrefix(unit, "hour") { return val + "h" }
-		if strings.HasPrefix(unit, "day") { return val + "d" }
-		if strings.HasPrefix(unit, "week") { return val + "w" }
-		if strings.HasPrefix(unit, "month") { return val + "mo" }
-		if strings.HasPrefix(unit, "year") { return val + "y" }
+		if strings.HasPrefix(unit, "second") {
+			return val + "s"
+		}
+		if strings.HasPrefix(unit, "minute") {
+			return val + "m"
+		}
+		if strings.HasPrefix(unit, "hour") {
+			return val + "h"
+		}
+		if strings.HasPrefix(unit, "day") {
+			return val + "d"
+		}
+		if strings.HasPrefix(unit, "week") {
+			return val + "w"
+		}
+		if strings.HasPrefix(unit, "month") {
+			return val + "mo"
+		}
+		if strings.HasPrefix(unit, "year") {
+			return val + "y"
+		}
 	}
 	return d
 }
@@ -131,7 +151,7 @@ func FormatBytes(b int64) string {
 func FormatBytesFixed(b int64) string {
 	val := float64(b)
 	// User requested: B KB MB GB TB
-	units := []string{"B ", "KB", "MB", "GB", "TB", "PB", "EB"} 
+	units := []string{"B ", "KB", "MB", "GB", "TB", "PB", "EB"}
 	exp := 0
 	for val >= 1000 && exp < len(units)-1 {
 		val /= 1024
@@ -161,24 +181,32 @@ func CalculateStatsFromMap(v map[string]interface{}) (float64, uint64, uint64, f
 	if cpuStats, ok := v["cpu_stats"].(map[string]interface{}); ok {
 		// Try precpu_stats first, but it might be empty on first call with stream=false
 		preCPUStats, _ := v["precpu_stats"].(map[string]interface{})
-		
+
 		if cpuUsage, ok := cpuStats["cpu_usage"].(map[string]interface{}); ok {
 			var totalUsage, preTotalUsage, systemUsage, preSystemUsage float64
-			
-			if t, ok := cpuUsage["total_usage"].(float64); ok { totalUsage = t }
-			if t, ok := cpuStats["system_cpu_usage"].(float64); ok { systemUsage = t }
-			
+
+			if t, ok := cpuUsage["total_usage"].(float64); ok {
+				totalUsage = t
+			}
+			if t, ok := cpuStats["system_cpu_usage"].(float64); ok {
+				systemUsage = t
+			}
+
 			if preCPUStats != nil {
 				if preCPUUsage, ok := preCPUStats["cpu_usage"].(map[string]interface{}); ok {
-					if t, ok := preCPUUsage["total_usage"].(float64); ok { preTotalUsage = t }
+					if t, ok := preCPUUsage["total_usage"].(float64); ok {
+						preTotalUsage = t
+					}
 				}
-				if t, ok := preCPUStats["system_cpu_usage"].(float64); ok { preSystemUsage = t }
+				if t, ok := preCPUStats["system_cpu_usage"].(float64); ok {
+					preSystemUsage = t
+				}
 			}
 
 			if systemUsage > 0.0 && totalUsage > 0.0 {
 				cpuDelta := totalUsage - preTotalUsage
 				systemDelta := systemUsage - preSystemUsage
-				
+
 				if systemDelta > 0.0 && cpuDelta > 0.0 {
 					if percpu, ok := cpuUsage["percpu_usage"].([]interface{}); ok && len(percpu) > 0 {
 						cpuPercent = (cpuDelta / systemDelta) * float64(len(percpu)) * 100.0
@@ -208,29 +236,41 @@ func CalculateStatsFromMap(v map[string]interface{}) (float64, uint64, uint64, f
 			}
 		}
 	}
-	
+
 	// Networks
 	if networks, ok := v["networks"].(map[string]interface{}); ok {
 		for _, netRaw := range networks {
 			if net, ok := netRaw.(map[string]interface{}); ok {
-				if rx, ok := net["rx_bytes"].(float64); ok { netRx += rx }
-				if tx, ok := net["tx_bytes"].(float64); ok { netTx += tx }
+				if rx, ok := net["rx_bytes"].(float64); ok {
+					netRx += rx
+				}
+				if tx, ok := net["tx_bytes"].(float64); ok {
+					netTx += tx
+				}
 			}
 		}
 	}
-	
+
 	// Disk (Block IO)
 	if blkio, ok := v["blkio_stats"].(map[string]interface{}); ok {
 		if serviceBytes, ok := blkio["io_service_bytes_recursive"].([]interface{}); ok {
 			for _, itemRaw := range serviceBytes {
 				if item, ok := itemRaw.(map[string]interface{}); ok {
 					op := ""
-					if o, ok := item["op"].(string); ok { op = strings.ToLower(o) }
+					if o, ok := item["op"].(string); ok {
+						op = strings.ToLower(o)
+					}
 					val := 0.0
-					if v, ok := item["value"].(float64); ok { val = v }
-					
-					if op == "read" { diskRead += val }
-					if op == "write" { diskWrite += val }
+					if v, ok := item["value"].(float64); ok {
+						val = v
+					}
+
+					if op == "read" {
+						diskRead += val
+					}
+					if op == "write" {
+						diskWrite += val
+					}
 				}
 			}
 		}

@@ -60,6 +60,7 @@ type Container struct {
 	ImageID     string
 	Status      string
 	State       string
+	Health      string
 	Age         string
 	Ports       string
 	Created     string
@@ -84,19 +85,19 @@ func (c Container) GetCells() []string {
 
 func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 	lower := strings.ToLower(c.State)
+	health := strings.ToLower(strings.TrimSpace(c.Health))
+	health = strings.TrimPrefix(health, "health: ")
 
-	// Fallback to parsed status if State is generic
-	if strings.Contains(strings.ToLower(c.Status), "starting") && !strings.Contains(strings.ToLower(c.Status), "restarting") {
+	switch health {
+	case "healthy":
+		return styles.ColorStatusGreen, styles.ColorBlack
+	case "unhealthy":
+		return styles.ColorStatusRed, styles.ColorBlack
+	case "starting":
 		return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
 	switch lower {
-	case "running":
-		if strings.Contains(strings.ToLower(c.Status), "healthy") {
-			//return styles.ColorStatusGreen, styles.ColorBlack
-		} else if strings.Contains(strings.ToLower(c.Status), "unhealthy") {
-			return styles.ColorStatusRed, styles.ColorBlack
-		}
 	case "paused":
 		return styles.ColorStatusYellow, styles.ColorBlack
 	case "restarting":
@@ -252,7 +253,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 		projectName := c.Labels["com.docker.compose.project"]
 		serviceName := c.Labels["com.docker.swarm.service.name"]
 
-		status, age := common.ParseStatus(c.Status)
+		status, age, health := common.ParseStatus(c.Status)
 
 		// Fetch Stats from Cache
 		cpuStr := "-"
@@ -307,6 +308,7 @@ func (m *Manager) List() ([]common.Resource, error) {
 			Status:      status,
 			Age:         age,
 			State:       c.State,
+			Health:      health,
 			Ports:       ports,
 			Created:     common.FormatTime(c.Created),
 			Compose:     compose,
