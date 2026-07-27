@@ -106,6 +106,11 @@ func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 		return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
+	switch strings.ToLower(c.State) {
+	case "exited", "dead":
+		return styles.ColorStatusGray, styles.ColorBlack
+	}
+
 	return styles.ColorIdle, styles.ColorBlack
 }
 

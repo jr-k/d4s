@@ -95,6 +95,22 @@ gup update
 </details>
 
 <details>
+<summary><b>Nix</b></summary>
+
+Run D4S directly from the flake:
+
+```bash
+nix run github:jr-k/d4s
+```
+
+Or install it into your profile:
+
+```bash
+nix profile install github:jr-k/d4s
+```
+</details>
+
+<details>
 <summary><b>From Source</b></summary>
 
 >Requirement: Go 1.25+
