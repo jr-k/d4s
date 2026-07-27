@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"runtime/debug"
@@ -44,6 +45,7 @@ type App struct {
 	TviewApp     *tview.Application
 	Screen       tcell.Screen
 	Docker       *dao.DockerClient
+	dockerMx     sync.RWMutex
 	Cfg          *config.Config
 	PortForwards *portforward.Manager
 
@@ -68,9 +70,11 @@ type App struct {
 	LatestVersion   string
 
 	// Concurrency
-	pauseMx    sync.RWMutex
-	paused     bool
-	stopTicker chan struct{}
+	pauseMx          sync.RWMutex
+	paused           bool
+	stopTicker       chan struct{}
+	contextSwitchGen atomic.Uint64
+	contextSaveMx    sync.Mutex
 
 	flashMx     sync.Mutex
 	flashExpiry time.Time
@@ -666,7 +670,17 @@ func (a *App) GetScreen() tcell.Screen {
 }
 
 func (a *App) GetDocker() *dao.DockerClient {
+	a.dockerMx.RLock()
+	defer a.dockerMx.RUnlock()
 	return a.Docker
+}
+
+func (a *App) swapDocker(newDocker *dao.DockerClient) *dao.DockerClient {
+	a.dockerMx.Lock()
+	defer a.dockerMx.Unlock()
+	oldDocker := a.Docker
+	a.Docker = newDocker
+	return oldDocker
 }
 
 func (a *App) GetPortForwardManager() *portforward.Manager {

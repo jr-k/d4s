@@ -245,7 +245,14 @@ func ShowFormWithDescription(app common.AppController, title, description string
 		if index == confirmIndex {
 			tviewApp.SetFocus(confirmBtn)
 		} else {
-			tviewApp.SetFocus(widgets[index].widget)
+			widget := widgets[index].widget
+			tviewApp.SetFocus(widget)
+			if input, ok := widget.(*tview.InputField); ok {
+				input.InputHandler()(
+					tcell.NewEventKey(tcell.KeyEnd, 0, tcell.ModNone),
+					func(p tview.Primitive) { tviewApp.SetFocus(p) },
+				)
+			}
 		}
 	}
 

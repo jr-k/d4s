@@ -19,7 +19,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
-var Headers = []string{"ID", "NAME", "IMAGE", "STATUS", "CPU", "MEM", "AGE", "PF", "IP", "PORTS", "COMPOSE", "CMD", "CREATED"}
+var Headers = []string{"ID", "NAME", "IMAGE", "STATUS", "HEALTH", "CPU", "MEM", "AGE", "PF", "IP", "PORTS", "COMPOSE", "CMD", "CREATED"}
 
 type containerWithPF struct {
 	dao.Container
@@ -28,11 +28,11 @@ type containerWithPF struct {
 
 func (c containerWithPF) GetCells() []string {
 	cells := c.Container.GetCells()
-	// Insert PF at index 7 (before IP)
+	// Insert PF at index 8 (before IP)
 	result := make([]string, 0, len(cells)+1)
-	result = append(result, cells[:7]...)
+	result = append(result, cells[:8]...)
 	result = append(result, c.pf)
-	result = append(result, cells[7:]...)
+	result = append(result, cells[8:]...)
 	return result
 }
 

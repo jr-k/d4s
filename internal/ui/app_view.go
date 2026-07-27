@@ -186,6 +186,13 @@ func (a *App) RefreshCurrentView() {
 
 			if err != nil {
 				a.Flash.SetText(fmt.Sprintf("[%s]Error: %v", styles.TagError, err))
+				if v.IsLoading {
+					// A failed endpoint must not leave the view swallowing
+					// input forever. Show an empty, interactive table while
+					// keeping the connection error visible in the footer.
+					v.Update(headers, nil)
+					a.updateViewTitle(v, a.formatViewTitle(page, "0", filter))
+				}
 			} else {
 				// Show actual title
 				title := a.formatViewTitle(page, fmt.Sprintf("%d", len(v.Data)), filter)
@@ -243,22 +250,24 @@ func (a *App) RefreshCurrentView() {
 	})
 }
 
-// preloadViews fetches data for all views in background so navigation is instant.
-// The initial view is skipped since it's already being refreshed by auto-refresh.
+// preloadViews fetches initial data for off-screen views in the background.
+// Results are discarded as soon as the Docker context changes.
 func (a *App) preloadViews() {
-	initialView := a.resolveDefaultView()
+	switchGen := a.contextSwitchGen.Load()
+	currentPage, _ := a.Pages.GetFrontPage()
+	docker := a.GetDocker()
 
 	// Over SSH, each concurrent connection spawns an ssh process; limit
 	// parallelism to avoid tripping sshd MaxStartups and hogging the pool.
 	concurrency := len(a.Views)
-	if a.Docker != nil && a.Docker.IsSSHContext() {
+	if docker != nil && docker.IsSSHContext() {
 		concurrency = 2
 	}
 	sem := make(chan struct{}, concurrency)
 
 	for title, v := range a.Views {
-		if title == initialView {
-			continue // Already being refreshed by StartAutoRefresh
+		if title == currentPage {
+			continue // Already being refreshed by auto-refresh
 		}
 		if v.FetchWithHeadersFunc == nil && v.FetchFunc == nil {
 			continue
@@ -267,6 +276,9 @@ func (a *App) preloadViews() {
 		go func(title string, v *view.ResourceView) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			if a.contextSwitchGen.Load() != switchGen {
+				return
+			}
 
 			var data []dao.Resource
 			var headers []string
@@ -280,8 +292,14 @@ func (a *App) preloadViews() {
 			if err != nil {
 				return // Silently ignore preload errors
 			}
+			if a.contextSwitchGen.Load() != switchGen {
+				return
+			}
 
 			a.SafeQueueUpdateDraw(func() {
+				if a.contextSwitchGen.Load() != switchGen {
+					return
+				}
 				// Don't overwrite if the user already navigated here
 				currentPage, _ := a.Pages.GetFrontPage()
 				if currentPage == title {
@@ -391,7 +409,7 @@ func (a *App) InspectCurrentSelection() {
 	a.OpenInspector(inspector)
 
 	a.RunInBackground(func() {
-		content, err := a.Docker.Inspect(resourceType, id)
+		content, err := a.GetDocker().Inspect(resourceType, id)
 		a.GetTviewApp().QueueUpdateDraw(func() {
 			if err != nil {
 				inspector.Viewer.Update(fmt.Sprintf("Error: %v", err), "text")

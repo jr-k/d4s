@@ -50,6 +50,17 @@ func (v *ResourceView) InvalidateFetch() {
 	v.fetchInFlight.Store(false)
 }
 
+// InvalidateData marks cached rows as belonging to a previous context.
+// The visible table is cleared lazily when the user navigates to this view.
+func (v *ResourceView) InvalidateData() {
+	v.Data = nil
+	v.RawData = nil
+	v.CurrentScope = nil
+	v.SelectedIDs = make(map[string]bool)
+	v.ActionStates = make(map[string]ActionState)
+	v.IsLoading = false
+}
+
 // ResourceView is the generic table view for any resource
 type ResourceView struct {
 	Table        *tview.Table

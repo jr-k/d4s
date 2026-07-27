@@ -8,16 +8,18 @@ import (
 	"github.com/jr-k/d4s/internal/config"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
+	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 func (a *App) ShowContextPicker() {
-	contexts, err := a.Docker.ListContexts()
+	docker := a.GetDocker()
+	contexts, err := docker.ListContexts()
 	if err != nil {
 		a.AppendFlashError(fmt.Sprintf("failed to load docker contexts: %v", err))
 		return
 	}
 
-	active := strings.TrimSpace(a.Docker.ContextName)
+	active := strings.TrimSpace(docker.ContextName)
 	saved := strings.TrimSpace(a.Cfg.D4S.DefaultContext)
 
 	items := make([]dialogs.PickerItem, 0, len(contexts))
@@ -66,14 +68,11 @@ func (a *App) SetDefaultContext(contextName string) {
 		return
 	}
 
-	if a.Docker != nil && a.Docker.ContextName == contextName {
-		a.Cfg.D4S.DefaultContext = contextName
-		if err := config.Save(a.Cfg); err != nil {
-			a.AppendFlashError(fmt.Sprintf("failed to save default context: %v", err))
-			return
-		}
-
-		a.AppendFlashSuccess(contextSavedMessage(contextName))
+	if docker := a.GetDocker(); docker != nil && docker.ContextName == contextName {
+		// Re-selecting the active context cancels any older switch that may
+		// still be preparing another client in the background.
+		switchGen := a.contextSwitchGen.Add(1)
+		a.saveDefaultContext(contextName, switchGen)
 		a.updateHeader()
 		return
 	}
@@ -90,60 +89,94 @@ func (a *App) ReloadContext(contextName string) {
 		return
 	}
 
+	switchGen := a.contextSwitchGen.Add(1)
 	a.SetFlashPending(fmt.Sprintf("switching context to %s...", contextName))
-	a.SetPaused(true)
-	a.StopAutoRefresh()
-
-	if a.ActiveInspector != nil {
-		a.ActiveInspector.OnUnmount()
-		a.ActiveInspector = nil
-	}
-	if a.Pages.HasPage("inspect") {
-		a.Pages.RemovePage("inspect")
-	}
-
-	a.SafeSetScope(nil)
-	a.ActiveFilter = ""
-	for _, v := range a.Views {
-		v.SetLoading(true)
-		// Free the fetch guard held by any fetch still running against the
-		// old endpoint (possibly hung), and mark its results as stale.
-		v.InvalidateFetch()
-	}
-	a.RestoreFocus()
-	a.UpdateShortcuts()
 
 	a.RunInBackground(func() {
 		newDocker, err := dao.NewDockerClient(contextName, a.Cfg.D4S.GetAPIServerTimeout(), contextName)
 		if err != nil {
 			a.TviewApp.QueueUpdateDraw(func() {
-				a.SetPaused(false)
-				a.StartAutoRefresh()
+				if a.contextSwitchGen.Load() != switchGen {
+					return
+				}
 				a.AppendFlashError(fmt.Sprintf("failed to switch context: %v", err))
-				a.RefreshCurrentView()
 				a.updateHeader()
 			})
 			return
 		}
 
-		a.Cfg.D4S.DefaultContext = contextName
-		saveErr := config.Save(a.Cfg)
-
 		a.TviewApp.QueueUpdateDraw(func() {
-			a.Docker = newDocker
-			a.SetPaused(false)
-			a.StartAutoRefresh()
+			if a.contextSwitchGen.Load() != switchGen {
+				a.RunInBackground(func() {
+					_ = newDocker.Close()
+				})
+				return
+			}
+
+			if a.ActiveInspector != nil {
+				a.ActiveInspector.OnUnmount()
+				a.ActiveInspector = nil
+			}
+			if a.Pages.HasPage("inspect") {
+				a.Pages.RemovePage("inspect")
+			}
+
+			a.SafeSetScope(nil)
+			a.ActiveFilter = ""
+			currentPage, _ := a.Pages.GetFrontPage()
+			for title, v := range a.Views {
+				// Context metadata remains usable while resources from the
+				// newly selected Docker endpoint are loading.
+				if title == currentPage && title != styles.TitleContexts {
+					v.SetLoading(true)
+				} else if title != styles.TitleContexts {
+					v.InvalidateData()
+				}
+				// Cancel requests against the previous endpoint and reject
+				// any results that arrive after the client swap.
+				v.InvalidateFetch()
+			}
+
+			oldDocker := a.swapDocker(newDocker)
+			if oldDocker != nil {
+				a.RunInBackground(func() {
+					_ = oldDocker.Close()
+				})
+			}
+
+			a.saveDefaultContext(contextName, switchGen)
+
 			a.RestoreFocus()
 			a.UpdateShortcuts()
 			a.updateHeader()
 			a.RefreshCurrentView()
-			a.preloadViews()
+		})
+	})
+}
 
-			if saveErr != nil {
-				a.AppendFlashError(fmt.Sprintf("switched to %s, but failed to save default: %v", contextName, saveErr))
+func (a *App) saveDefaultContext(contextName string, switchGen uint64) {
+	a.Cfg.D4S.DefaultContext = contextName
+	cfg := *a.Cfg
+
+	a.RunInBackground(func() {
+		// Serialize writes so an older context switch can never overwrite a
+		// newer selection after a slow filesystem operation.
+		a.contextSaveMx.Lock()
+		defer a.contextSaveMx.Unlock()
+
+		if a.contextSwitchGen.Load() != switchGen {
+			return
+		}
+		err := config.Save(&cfg)
+
+		a.TviewApp.QueueUpdateDraw(func() {
+			if a.contextSwitchGen.Load() != switchGen {
 				return
 			}
-
+			if err != nil {
+				a.AppendFlashError(fmt.Sprintf("failed to save default context: %v", err))
+				return
+			}
 			a.AppendFlashSuccess(contextSavedMessage(contextName))
 		})
 	})

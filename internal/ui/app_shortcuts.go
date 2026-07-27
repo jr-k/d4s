@@ -8,7 +8,7 @@ import (
 func (a *App) getCurrentShortcuts() []string {
 	page, _ := a.Pages.GetFrontPage()
 	var shortcuts []string
-	
+
 	// Handle special pages (modals, logs) manually for now, or could attach view logic too.
 	if page == "inspect" {
 		if a.ActiveInspector != nil {
@@ -20,14 +20,14 @@ func (a *App) getCurrentShortcuts() []string {
 	if view, ok := a.Views[page]; ok && view.ShortcutsFunc != nil {
 		shortcuts = view.ShortcutsFunc()
 	}
-	
+
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("tab", "Context"))
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("shift ←/→", "Sort"))
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("shift-c", "Copy Table"))
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("c", "Copy Cell"))
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("u", "Unselect All"))
 	shortcuts = append(shortcuts, common.FormatSCHeaderGlobal("?", "Help"))
-	
+
 	return shortcuts
 }
 
@@ -49,7 +49,10 @@ func (a *App) UpdateShortcuts() {
 }
 
 func (a *App) updateHeader() {
-	docker := a.Docker
+	docker := a.GetDocker()
+	if docker == nil {
+		return
+	}
 	go func() {
 		stats, err := docker.GetHostStats()
 		if err != nil {
@@ -57,7 +60,7 @@ func (a *App) updateHeader() {
 		}
 
 		a.TviewApp.QueueUpdateDraw(func() {
-			if a.Docker != docker {
+			if a.GetDocker() != docker {
 				return
 			}
 			shortcuts := a.getCurrentShortcuts()
@@ -68,7 +71,7 @@ func (a *App) updateHeader() {
 		statsWithUsage, err := docker.GetHostStatsWithUsage()
 		if err == nil {
 			a.TviewApp.QueueUpdateDraw(func() {
-				if a.Docker != docker {
+				if a.GetDocker() != docker {
 					return
 				}
 				shortcuts := a.getCurrentShortcuts()

@@ -78,6 +78,7 @@ type DockerClient struct {
 	Cli         *client.Client
 	Ctx         context.Context
 	ContextName string
+	cancel      context.CancelFunc
 
 	// Managers
 	Container *container.Manager
@@ -135,12 +136,13 @@ func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContex
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &DockerClient{
 		Cli:              cli,
 		Ctx:              ctx,
 		ContextName:      ctxName,
+		cancel:           cancel,
 		Container:        container.NewManager(cli, ctx),
 		Image:            image.NewManager(cli, ctx),
 		Volume:           volume.NewManager(cli, ctx),
@@ -155,6 +157,20 @@ func NewDockerClient(contextName string, apiTimeout time.Duration, defaultContex
 		containerInfoMap: make(map[string]containerInfoCache),
 		refreshing:       make(map[string]bool),
 	}, nil
+}
+
+// Close cancels in-flight API calls and releases the client's idle connections.
+func (d *DockerClient) Close() error {
+	if d == nil {
+		return nil
+	}
+	if d.cancel != nil {
+		d.cancel()
+	}
+	if d.Cli != nil {
+		return d.Cli.Close()
+	}
+	return nil
 }
 
 func initLogger() (*log.Logger, func()) {

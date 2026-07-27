@@ -75,40 +75,34 @@ type Container struct {
 }
 
 func (c Container) GetID() string { return c.ID }
+
+func (c Container) healthStatus() string {
+	health := strings.TrimSpace(c.Health)
+	health = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(health), "health:"))
+	if health == "" {
+		return ""
+	}
+	return strings.ToUpper(health[:1]) + health[1:]
+}
+
 func (c Container) GetCells() []string {
 	id := c.ID
 	if len(id) > 12 {
 		id = id[:12]
 	}
-	return []string{id, c.Names, c.Image, c.Status, c.CPU, c.Mem, c.Age, c.IP, c.Ports, c.Compose, c.Cmd, c.Created}
+	return []string{id, c.Names, c.Image, c.Status, c.healthStatus(), c.CPU, c.Mem, c.Age, c.IP, c.Ports, c.Compose, c.Cmd, c.Created}
 }
 
 func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
-	lower := strings.ToLower(c.State)
 	health := strings.ToLower(strings.TrimSpace(c.Health))
 	health = strings.TrimPrefix(health, "health: ")
 
 	switch health {
 	case "healthy":
-		return styles.ColorStatusGreen, styles.ColorBlack
+		return styles.ColorIdle, styles.ColorBlack
 	case "unhealthy":
 		return styles.ColorStatusRed, styles.ColorBlack
 	case "starting":
-		return styles.ColorStatusBlue, styles.ColorBlack
-	}
-
-	switch lower {
-	case "paused":
-		return styles.ColorStatusYellow, styles.ColorBlack
-	case "restarting":
-		return styles.ColorStatusOrange, styles.ColorBlack
-	case "stopping":
-		return styles.ColorStatusRed, styles.ColorBlack
-	case "starting":
-		return styles.ColorStatusBlue, styles.ColorBlack
-	case "exited", "dead":
-		return styles.ColorStatusGray, styles.ColorBlack
-	case "created":
 		return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
@@ -127,6 +121,8 @@ func (c Container) GetColumnValue(column string) string {
 		return c.IP
 	case "status":
 		return c.Status
+	case "health":
+		return c.healthStatus()
 	case "age":
 		return c.Age
 	case "ports":

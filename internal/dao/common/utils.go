@@ -33,7 +33,6 @@ func ParseStatus(s string) (status, age, health string) {
 				status = "Paused"
 			} else if detail != "" {
 				health = detail
-				status = fmt.Sprintf("Up (%s)", detail)
 			}
 		}
 
