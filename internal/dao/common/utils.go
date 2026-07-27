@@ -57,7 +57,7 @@ func ParseStatus(s string) (status, age, health string) {
 		status = "Exiting"
 		age = "-"
 	} else if strings.Contains(strings.ToLower(s), "starting") {
-		status = "Starting"
+		status = "Starting..."
 		age = "-"
 	} else {
 		status = s

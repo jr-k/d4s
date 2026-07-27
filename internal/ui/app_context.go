@@ -8,7 +8,6 @@ import (
 	"github.com/jr-k/d4s/internal/config"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
-	"github.com/jr-k/d4s/internal/ui/styles"
 )
 
 func (a *App) ShowContextPicker() {
@@ -125,11 +124,9 @@ func (a *App) ReloadContext(contextName string) {
 			a.ActiveFilter = ""
 			currentPage, _ := a.Pages.GetFrontPage()
 			for title, v := range a.Views {
-				// Context metadata remains usable while resources from the
-				// newly selected Docker endpoint are loading.
-				if title == currentPage && title != styles.TitleContexts {
+				if title == currentPage {
 					v.SetLoading(true)
-				} else if title != styles.TitleContexts {
+				} else {
 					v.InvalidateData()
 				}
 				// Cancel requests against the previous endpoint and reject

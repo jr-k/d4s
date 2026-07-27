@@ -98,17 +98,27 @@ func (c Container) GetStatusColor() (tcell.Color, tcell.Color) {
 	health = strings.TrimPrefix(health, "health: ")
 
 	switch health {
-	case "healthy":
-		return styles.ColorIdle, styles.ColorBlack
-	case "unhealthy":
-		return styles.ColorStatusRed, styles.ColorBlack
-	case "starting":
-		return styles.ColorStatusBlue, styles.ColorBlack
+		case "healthy":
+			return styles.ColorIdle, styles.ColorBlack
+		case "unhealthy":
+			return styles.ColorStatusRed, styles.ColorBlack
+		case "starting":
+			return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
 	switch strings.ToLower(c.State) {
-	case "exited", "dead":
-		return styles.ColorStatusGray, styles.ColorBlack
+		case "paused":
+			return styles.ColorStatusYellow, styles.ColorBlack
+		case "restarting":
+			return styles.ColorStatusOrange, styles.ColorBlack
+		case "stopping":
+			return styles.ColorStatusRed, styles.ColorBlack
+		case "starting":
+			return styles.ColorStatusBlue, styles.ColorBlack
+		case "exited", "dead":
+			return styles.ColorStatusGray, styles.ColorBlack
+		case "created":
+			return styles.ColorStatusBlue, styles.ColorBlack
 	}
 
 	return styles.ColorIdle, styles.ColorBlack
