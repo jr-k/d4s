@@ -17,6 +17,9 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 	scope := app.GetActiveScope()
 
 	if scope != nil && scope.Type == "service" {
+		if nodeScope := findScope(scope.Parent, "node"); nodeScope != nil {
+			return app.GetDocker().ListTasksForServiceAndNodeResource(scope.Value, nodeScope.Value)
+		}
 		return app.GetDocker().ListTasksForServiceResource(scope.Value)
 	}
 
@@ -25,6 +28,16 @@ func Fetch(app common.AppController, v *view.ResourceView) ([]dao.Resource, erro
 	}
 
 	return app.GetDocker().ListTasks()
+}
+
+func findScope(scope *common.Scope, scopeType string) *common.Scope {
+	for scope != nil {
+		if scope.Type == scopeType {
+			return scope
+		}
+		scope = scope.Parent
+	}
+	return nil
 }
 
 func GetShortcuts() []string {

@@ -255,6 +255,16 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 }
 
 func ViewAction(app common.AppController, v *view.ResourceView) {
+	// A swarm manager only exposes containers running on its own daemon.
+	// When services are scoped to another node, use cluster-wide task data
+	// instead of showing containers from the connected node.
+	for scope := app.GetActiveScope(); scope != nil; scope = scope.Parent {
+		if scope.Type == "node" {
+			TasksAction(app, v)
+			return
+		}
+	}
+
 	id, err := v.GetSelectedID()
 	if err != nil {
 		return

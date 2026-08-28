@@ -145,6 +145,22 @@ func (m *Manager) ListForNode(nodeID string) ([]common.Resource, error) {
 	return m.toResources(tasks, nodes, services), nil
 }
 
+func (m *Manager) ListForServiceAndNode(serviceID, nodeID string) ([]common.Resource, error) {
+	filter := filters.NewArgs()
+	filter.Add("service", serviceID)
+	filter.Add("node", nodeID)
+
+	tasks, err := m.cli.TaskList(m.ctx, dt.TaskListOptions{Filters: filter})
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := m.resolveNodes()
+	services := m.resolveServices()
+
+	return m.toResources(tasks, nodes, services), nil
+}
+
 func (m *Manager) toResources(tasks []swarm.Task, nodes map[string]string, services map[string]string) []common.Resource {
 	var res []common.Resource
 	for _, t := range tasks {

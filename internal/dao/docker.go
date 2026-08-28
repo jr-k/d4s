@@ -871,6 +871,10 @@ func (d *DockerClient) ListTasksForNodeResource(nodeID string) ([]common.Resourc
 	return d.Task.ListForNode(nodeID)
 }
 
+func (d *DockerClient) ListTasksForServiceAndNodeResource(serviceID, nodeID string) ([]common.Resource, error) {
+	return d.Task.ListForServiceAndNode(serviceID, nodeID)
+}
+
 // ensureComposeTarget tells the compose manager where its CLI commands
 // must run: on the remote host for SSH contexts (compose files live
 // there), locally (pinned to the right context) otherwise.
