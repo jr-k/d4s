@@ -2,6 +2,7 @@ package dialogs
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/ui/common"
@@ -24,6 +25,7 @@ type FormField struct {
 	Default     string
 	Placeholder string
 	Secret      bool
+	Suggestions []string
 }
 
 type FormResult map[string]string
@@ -102,6 +104,28 @@ func ShowFormWithDescription(app common.AppController, title, description string
 				SetText(f.Default)
 			if f.Secret {
 				input.SetMaskCharacter('*')
+			}
+			if len(f.Suggestions) > 0 {
+				suggestions := append([]string(nil), f.Suggestions...)
+				input.SetAutocompleteStyles(
+					styles.ColorBlack,
+					tcell.StyleDefault.Foreground(styles.ColorFg).Background(styles.ColorBlack),
+					tcell.StyleDefault.Foreground(styles.ColorWhite).Background(styles.ColorSelectBg),
+				)
+				input.SetAutocompleteFunc(func(currentText string) []string {
+					query := strings.ToLower(strings.TrimSpace(currentText))
+					if query == "" {
+						return suggestions
+					}
+
+					matches := make([]string, 0, len(suggestions))
+					for _, suggestion := range suggestions {
+						if strings.Contains(strings.ToLower(suggestion), query) {
+							matches = append(matches, suggestion)
+						}
+					}
+					return matches
+				})
 			}
 			input.SetBackgroundColor(styles.ColorBlack)
 
@@ -302,11 +326,25 @@ func ShowFormWithDescription(app common.AppController, title, description string
 				}
 			})
 			input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-				if event.Key() == tcell.KeyDown || event.Key() == tcell.KeyTab {
+				if event.Key() == tcell.KeyTab {
 					moveFocus(1)
 					return nil
 				}
-				if event.Key() == tcell.KeyUp || event.Key() == tcell.KeyBacktab {
+				if event.Key() == tcell.KeyDown {
+					if len(fw.field.Suggestions) > 0 {
+						return event
+					}
+					moveFocus(1)
+					return nil
+				}
+				if event.Key() == tcell.KeyBacktab {
+					moveFocus(-1)
+					return nil
+				}
+				if event.Key() == tcell.KeyUp {
+					if len(fw.field.Suggestions) > 0 {
+						return event
+					}
 					moveFocus(-1)
 					return nil
 				}

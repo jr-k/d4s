@@ -1,8 +1,10 @@
 package contexts
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -13,6 +15,7 @@ import (
 	"github.com/jr-k/d4s/internal/ui/components/view"
 	"github.com/jr-k/d4s/internal/ui/dialogs"
 	"github.com/jr-k/d4s/internal/ui/styles"
+	"golang.org/x/crypto/ssh"
 )
 
 var Headers = []string{"NAME", "CURRENT", "DESCRIPTION", "TYPE", "ENDPOINT"}
@@ -110,7 +113,6 @@ func GetShortcuts() []string {
 		common.FormatSCHeader("d", "Describe"),
 		common.FormatSCHeader("e", "Edit"),
 		common.FormatSCHeader("a", "Add"),
-		common.FormatSCHeader("shift-a", "Add Remote"),
 		common.FormatSCHeader("ctrl-d", "Delete"),
 	}
 }
@@ -136,9 +138,6 @@ func InputHandler(v *view.ResourceView, event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case 'a':
 		Create(app)
-		return nil
-	case 'A':
-		CreateSSH(app)
 		return nil
 	}
 
@@ -190,6 +189,38 @@ func Remove(id string, force bool, app common.AppController) error {
 }
 
 func Create(app common.AppController) {
+	items := []dialogs.PickerItem{
+		{
+			Label:       "Local Context",
+			Description: "create a context from a Docker endpoint",
+			Value:       "local",
+			Shortcut:    'l',
+		},
+		{
+			Label:       "Remote Context (SSH Key)",
+			Description: "connect over SSH with a private key",
+			Value:       secrets.AuthTypeKey,
+			Shortcut:    'k',
+		},
+		{
+			Label:       "Remote Context (Password)",
+			Description: "connect over SSH with a password",
+			Value:       secrets.AuthTypePassword,
+			Shortcut:    'p',
+		},
+	}
+
+	dialogs.ShowPicker(app, "Add Context", items, func(contextType string) {
+		switch contextType {
+		case "local":
+			showLocalForm(app)
+		case secrets.AuthTypePassword, secrets.AuthTypeKey:
+			showSSHForm(app, contextType)
+		}
+	})
+}
+
+func showLocalForm(app common.AppController) {
 	fields := []dialogs.FormField{
 		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput},
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput},
@@ -280,41 +311,32 @@ func Edit(app common.AppController, v *view.ResourceView) {
 	})
 }
 
-// parseSSHURL splits "ssh://user@ip[:port][/socket/path]" into the host
-// part and the optional remote socket path.
-func parseSSHURL(endpoint string) (host, socket string) {
+// parseSSHURL splits "ssh://user@ip[:port][/socket/path]" into its form fields.
+func parseSSHURL(endpoint string) (user, host, socket string) {
 	rest := strings.TrimPrefix(endpoint, "ssh://")
 	if idx := strings.Index(rest, "/"); idx >= 0 {
-		return rest[:idx], rest[idx:]
+		socket = rest[idx:]
+		rest = rest[:idx]
 	}
-	return rest, ""
+	if idx := strings.LastIndex(rest, "@"); idx >= 0 {
+		return rest[:idx], rest[idx+1:], socket
+	}
+	return "", rest, socket
 }
 
 func editSSH(app common.AppController, id, currentDesc, currentEndpoint string) {
 	existing, _ := secrets.Load(id)
 
-	currentAuth := secrets.AuthTypeKey
+	authType := secrets.AuthTypeKey
 	if existing != nil && existing.AuthType != "" {
-		currentAuth = existing.AuthType
+		authType = existing.AuthType
 	}
 
-	items := []dialogs.PickerItem{
-		{Label: "SSH Key", Description: "authenticate with a private key", Value: secrets.AuthTypeKey},
-		{Label: "Password", Description: "authenticate with a password", Value: secrets.AuthTypePassword},
-	}
-	for i := range items {
-		if items[i].Value == currentAuth {
-			items[i].Description += " (current)"
-		}
-	}
-
-	dialogs.ShowPicker(app, "Authentication Method", items, func(authType string) {
-		showSSHEditForm(app, id, currentDesc, currentEndpoint, authType, existing)
-	})
+	showSSHEditForm(app, id, currentDesc, currentEndpoint, authType, existing)
 }
 
 func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint, authType string, existing *secrets.SSHCredentials) {
-	currentHost, currentSocket := parseSSHURL(currentEndpoint)
+	currentUser, currentHost, currentSocket := parseSSHURL(currentEndpoint)
 	if currentSocket == "" {
 		currentSocket = "/var/run/docker.sock"
 	}
@@ -329,12 +351,20 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 
 	fields := []dialogs.FormField{
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput, Default: currentDesc},
-		{Name: "host", Label: "Host (user@ip)", Type: dialogs.FieldTypeInput, Default: currentHost},
+		{Name: "user", Label: "SSH User", Type: dialogs.FieldTypeInput, Default: currentUser, Placeholder: "root"},
+		{Name: "host", Label: "Host", Type: dialogs.FieldTypeInput, Default: currentHost, Placeholder: "192.168.1.100"},
 	}
 
 	if authType == secrets.AuthTypeKey {
 		fields = append(fields,
-			dialogs.FormField{Name: "key", Label: "SSH Key", Type: dialogs.FieldTypeInput, Default: defaultKey, Placeholder: "~/.ssh/id_ed25519"},
+			dialogs.FormField{
+				Name:        "key",
+				Label:       "SSH Key",
+				Type:        dialogs.FieldTypeInput,
+				Default:     defaultKey,
+				Placeholder: "~/.ssh/id_ed25519",
+				Suggestions: discoverSSHKeys(),
+			},
 			dialogs.FormField{Name: "passphrase", Label: "Passphrase (optional)", Type: dialogs.FieldTypeInput, Default: defaultPassphrase, Secret: true},
 		)
 	} else {
@@ -349,9 +379,14 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 
 	dialogs.ShowFormWithDescription(app, fmt.Sprintf("Edit Context: %s", id), "Updates the SSH context and its credentials", fields, func(result dialogs.FormResult) {
 		description := result["description"]
+		user := strings.TrimSpace(result["user"])
 		host := strings.TrimSpace(result["host"])
 		socket := strings.TrimSpace(result["socket"])
 
+		if user == "" {
+			app.SetFlashError("SSH user is required")
+			return
+		}
 		if host == "" {
 			app.SetFlashError("host is required")
 			return
@@ -368,9 +403,10 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 			Password:   result["password"],
 		}
 
-		sshURL := fmt.Sprintf("ssh://%s", host)
+		sshHost := fmt.Sprintf("%s@%s", user, host)
+		sshURL := fmt.Sprintf("ssh://%s", sshHost)
 		if socket != "" && socket != "/var/run/docker.sock" {
-			sshURL = fmt.Sprintf("ssh://%s%s", host, socket)
+			sshURL = fmt.Sprintf("ssh://%s%s", sshHost, socket)
 		}
 
 		app.AppendFlashPending(fmt.Sprintf("updating context %s...", id))
@@ -403,26 +439,23 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 	})
 }
 
-func CreateSSH(app common.AppController) {
-	items := []dialogs.PickerItem{
-		{Label: "SSH Key", Description: "authenticate with a private key (recommended)", Value: secrets.AuthTypeKey},
-		{Label: "Password", Description: "authenticate with a password", Value: secrets.AuthTypePassword},
-	}
-
-	dialogs.ShowPicker(app, "Authentication Method", items, func(authType string) {
-		showSSHForm(app, authType)
-	})
-}
-
 func showSSHForm(app common.AppController, authType string) {
 	fields := []dialogs.FormField{
 		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput, Placeholder: "prod-server"},
-		{Name: "host", Label: "Host (user@ip)", Type: dialogs.FieldTypeInput, Placeholder: "root@192.168.1.100"},
+		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput},
+		{Name: "user", Label: "SSH User", Type: dialogs.FieldTypeInput, Placeholder: "root"},
+		{Name: "host", Label: "Host", Type: dialogs.FieldTypeInput, Placeholder: "192.168.1.100"},
 	}
 
 	if authType == secrets.AuthTypeKey {
 		fields = append(fields,
-			dialogs.FormField{Name: "key", Label: "SSH Key", Type: dialogs.FieldTypeInput, Placeholder: "~/.ssh/id_ed25519"},
+			dialogs.FormField{
+				Name:        "key",
+				Label:       "SSH Key",
+				Type:        dialogs.FieldTypeInput,
+				Placeholder: "~/.ssh/id_ed25519",
+				Suggestions: discoverSSHKeys(),
+			},
 			dialogs.FormField{Name: "passphrase", Label: "Passphrase (optional)", Type: dialogs.FieldTypeInput, Secret: true},
 		)
 	} else {
@@ -437,11 +470,17 @@ func showSSHForm(app common.AppController, authType string) {
 
 	dialogs.ShowFormWithDescription(app, "Add Remote Context (SSH)", "Creates a Docker context using SSH tunnel", fields, func(result dialogs.FormResult) {
 		name := strings.TrimSpace(result["name"])
+		description := result["description"]
+		user := strings.TrimSpace(result["user"])
 		host := strings.TrimSpace(result["host"])
 		socket := strings.TrimSpace(result["socket"])
 
 		if name == "" {
 			app.SetFlashError("name is required")
+			return
+		}
+		if user == "" {
+			app.SetFlashError("SSH user is required")
 			return
 		}
 		if host == "" {
@@ -460,15 +499,16 @@ func showSSHForm(app common.AppController, authType string) {
 			Password:   result["password"],
 		}
 
-		sshURL := fmt.Sprintf("ssh://%s", host)
+		sshHost := fmt.Sprintf("%s@%s", user, host)
+		sshURL := fmt.Sprintf("ssh://%s", sshHost)
 		if socket != "" && socket != "/var/run/docker.sock" {
-			sshURL = fmt.Sprintf("ssh://%s%s", host, socket)
+			sshURL = fmt.Sprintf("ssh://%s%s", sshHost, socket)
 		}
 
 		app.AppendFlashPending(fmt.Sprintf("creating SSH context %s (%s)...", name, sshURL))
 
 		app.RunInBackground(func() {
-			err := app.GetDocker().CreateContext(name, fmt.Sprintf("SSH remote: %s", host), sshURL)
+			err := app.GetDocker().CreateContext(name, description, sshURL)
 			if err == nil {
 				if kerr := secrets.Save(name, creds); kerr != nil {
 					app.GetTviewApp().QueueUpdateDraw(func() {
@@ -486,6 +526,38 @@ func showSSHForm(app common.AppController, authType string) {
 			})
 		})
 	})
+}
+
+func discoverSSHKeys() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	sshDir := filepath.Join(home, ".ssh")
+	entries, err := os.ReadDir(sshDir)
+	if err != nil {
+		return nil
+	}
+
+	var keys []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(sshDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		_, err = ssh.ParseRawPrivateKey(data)
+		var passphraseMissing *ssh.PassphraseMissingError
+		if err == nil || errors.As(err, &passphraseMissing) {
+			keys = append(keys, filepath.Join("~", ".ssh", entry.Name()))
+		}
+	}
+	return keys
 }
 
 func expandHome(path string) string {
