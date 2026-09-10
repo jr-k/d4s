@@ -11,6 +11,12 @@ D4S (pronounced *D-Force*) brings the power and ergonomics of [K9s](https://gith
 <a target="_blank" href="https://github.com/jr-k/d4s/stargazers"><img src="https://img.shields.io/github/stars/jr-k/d4s?style=flat&color=yellow" /></a>
 <a target="_blank" href="https://github.com/jr-k/d4s/pkgs/container/d4s"><img src="https://img.shields.io/badge/ghcr.io-d4s-orange?logo=github&color=orange" /></a>
 
+## Quick install
+
+```bash
+curl -fsSL https://d4scli.io/install.sh | sh -s -- ~/.local/bin
+```
+
 ## Screenshots
 
 <table>
