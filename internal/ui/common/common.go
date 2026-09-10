@@ -102,7 +102,13 @@ func FormatSC(key, action string) string {
 
 func DockerCommand(app AppController, args ...string) *exec.Cmd {
 	cmdArgs := append([]string{}, args...)
-	if docker := app.GetDocker(); docker != nil && docker.ContextName != "" && docker.ContextName != "default" {
+	// "env" is the internal marker used when the client was configured from
+	// DOCKER_HOST. It is not a Docker context name: in that case the CLI must
+	// inherit DOCKER_HOST from the current environment.
+	if docker := app.GetDocker(); docker != nil &&
+		docker.ContextName != "" &&
+		docker.ContextName != "default" &&
+		docker.ContextName != "env" {
 		cmdArgs = append([]string{"--context", docker.ContextName}, cmdArgs...)
 	}
 	return exec.Command("docker", cmdArgs...)

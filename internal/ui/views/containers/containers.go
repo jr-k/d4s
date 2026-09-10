@@ -12,6 +12,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/portforward"
+	"github.com/jr-k/d4s/internal/sshutil"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -428,6 +429,36 @@ func Describe(app common.AppController, v *view.ResourceView) {
 	app.OpenInspector(inspect.NewTextInspector("Describe container", subject, content, "json"))
 }
 
+func shellCommand(app common.AppController, id, shell string, asRoot, interactive bool) *exec.Cmd {
+	args := []string{"exec"}
+	if asRoot {
+		args = append(args, "-u", "root")
+	}
+	if interactive {
+		args = append(args, "-it")
+	}
+	args = append(args, id, shell)
+	if !interactive {
+		args = append(args, "-c", "exit 0")
+	}
+
+	docker := app.GetDocker()
+	if docker != nil && docker.IsSSHContext() {
+		quoted := make([]string, 0, len(args)+1)
+		quoted = append(quoted, "docker")
+		for _, arg := range args {
+			quoted = append(quoted, sshutil.ShellQuote(arg))
+		}
+		remoteCmd := strings.Join(quoted, " ")
+		if interactive {
+			return sshutil.SSHCommandTTY(docker.ContextName, docker.GetSSHHost(), remoteCmd)
+		}
+		return sshutil.SSHCommand(docker.ContextName, docker.GetSSHHost(), remoteCmd)
+	}
+
+	return common.DockerCommand(app, args...)
+}
+
 func Shell(app common.AppController, id string, asRoot bool) {
 	// Stop any background refresh to prevent UI updates interfering with the shell
 	app.StopAutoRefresh()
@@ -452,22 +483,27 @@ func Shell(app common.AppController, id string, asRoot bool) {
 
 		shells := []string{"bash", "zsh", "ash", "sh"}
 		var selectedShell string
+		var lastError string
 
 		for _, shell := range shells {
-			var checkCmd *exec.Cmd
-			if asRoot {
-				checkCmd = common.DockerCommand(app, "exec", "-u", "root", id, shell, "-c", "exit 0")
-			} else {
-				checkCmd = common.DockerCommand(app, "exec", id, shell, "-c", "exit 0")
-			}
-			if err := checkCmd.Run(); err == nil {
+			checkCmd := shellCommand(app, id, shell, asRoot, false)
+			output, err := checkCmd.CombinedOutput()
+			if err == nil {
 				selectedShell = shell
 				break
+			}
+			lastError = strings.TrimSpace(string(output))
+			if lastError == "" {
+				lastError = err.Error()
 			}
 		}
 
 		if selectedShell == "" {
-			fmt.Printf("No supported shell found (tried: %v)\nPress Enter to continue...", shells)
+			fmt.Printf("No supported shell found (tried: %v)\n", shells)
+			if lastError != "" {
+				fmt.Printf("Last error: %s\n", lastError)
+			}
+			fmt.Print("Press Enter to continue...")
 			fmt.Scanln()
 			return
 		}
@@ -479,12 +515,7 @@ func Shell(app common.AppController, id string, asRoot bool) {
 		}
 		fmt.Printf("Entering shell %s%s for %s (CTRL+D or 'exit' to return)...\n", selectedShell, shellMode, id)
 
-		var cmd *exec.Cmd
-		if asRoot {
-			cmd = common.DockerCommand(app, "exec", "-u", "root", "-it", id, selectedShell)
-		} else {
-			cmd = common.DockerCommand(app, "exec", "-it", id, selectedShell)
-		}
+		cmd := shellCommand(app, id, selectedShell, asRoot, true)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

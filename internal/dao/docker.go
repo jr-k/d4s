@@ -716,7 +716,9 @@ func (d *DockerClient) StackPS(name string) (string, error) {
 // context, so commands hit the right daemon (e.g. over SSH) instead of
 // whatever context the local docker CLI currently points to.
 func (d *DockerClient) dockerCmd(args ...string) *exec.Cmd {
-	if d.ContextName != "" && d.ContextName != "default" {
+	// "env" means the client is using DOCKER_HOST, not a context named "env".
+	// Let the Docker CLI inherit DOCKER_HOST instead of passing --context env.
+	if d.ContextName != "" && d.ContextName != "default" && d.ContextName != "env" {
 		args = append([]string{"--context", d.ContextName}, args...)
 	}
 	return exec.Command("docker", args...)
