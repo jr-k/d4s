@@ -153,6 +153,26 @@ func (m *Manager) List() ([]common.Resource, error) {
 		return nil, err
 	}
 
+	completedServices := make(map[string]map[string]struct{})
+	for _, c := range list {
+		project := c.Labels["com.docker.compose.project"]
+		dependencies := c.Labels["com.docker.compose.depends_on"]
+		if project == "" || dependencies == "" {
+			continue
+		}
+
+		for dependency := range strings.SplitSeq(dependencies, ",") {
+			parts := strings.Split(strings.TrimSpace(dependency), ":")
+			if len(parts) < 2 || parts[1] != "service_completed_successfully" {
+				continue
+			}
+			if completedServices[project] == nil {
+				completedServices[project] = make(map[string]struct{})
+			}
+			completedServices[project][parts[0]] = struct{}{}
+		}
+	}
+
 	type projData struct {
 		total       int
 		jobs        int
@@ -182,7 +202,9 @@ func (m *Manager) List() ([]common.Resource, error) {
 			}
 		}
 
-		if c.Labels["d4s.lifecycle"] == "job" {
+		service := c.Labels["com.docker.compose.service"]
+		_, completedJob := completedServices[proj][service]
+		if c.Labels["d4s.lifecycle"] == "job" || completedJob {
 			projects[proj].jobs++
 			continue
 		}
@@ -220,12 +242,12 @@ func (m *Manager) Stop(projectName string) error {
 	// Find all containers with this project name
 	args := filters.NewArgs()
 	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
-	
+
 	containers, err := m.cli.ContainerList(m.ctx, container.ListOptions{Filters: args, All: true})
 	if err != nil {
 		return err
 	}
-	
+
 	if len(containers) == 0 {
 		return fmt.Errorf("no containers found for project %s", projectName)
 	}
@@ -238,7 +260,7 @@ func (m *Manager) Stop(projectName string) error {
 			errs = append(errs, fmt.Sprintf("%s: %v", c.Names[0], err))
 		}
 	}
-	
+
 	if len(errs) > 0 {
 		return fmt.Errorf("errors stopping containers: %s", strings.Join(errs, "; "))
 	}
@@ -249,61 +271,63 @@ func (m *Manager) GetConfig(projectName string) (string, error) {
 	// Find one container to get config path
 	args := filters.NewArgs()
 	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
-	
+
 	containers, err := m.cli.ContainerList(m.ctx, container.ListOptions{Filters: args, All: true, Limit: 1})
 	if err != nil {
 		return "", err
 	}
-	
+
 	if len(containers) == 0 {
 		return "", fmt.Errorf("project not found or no containers")
 	}
-	
+
 	configFiles := containers[0].Labels["com.docker.compose.project.config_files"]
 	if configFiles == "" {
 		return "", fmt.Errorf("no config files label found")
 	}
-	
+
 	// Handle multiple files (separated by comma)
 	files := strings.Split(configFiles, ",")
 	var sb strings.Builder
-	
+
 	for _, f := range files {
 		path := strings.TrimSpace(f)
-		if path == "" { continue }
-		
+		if path == "" {
+			continue
+		}
+
 		content, err := m.readConfigFile(path)
 		if err != nil {
 			sb.WriteString(fmt.Sprintf("# Error reading %s: %v\n", path, err))
 			continue
 		}
-		
+
 		sb.WriteString(fmt.Sprintf("# File: %s\n", path))
 		sb.WriteString(string(content))
 		sb.WriteString("\n---\n")
 	}
-	
+
 	return sb.String(), nil
 }
 
 func (m *Manager) getConfigPaths(projectName string) ([]string, error) {
 	args := filters.NewArgs()
 	args.Add("label", fmt.Sprintf("com.docker.compose.project=%s", projectName))
-	
+
 	containers, err := m.cli.ContainerList(m.ctx, container.ListOptions{Filters: args, All: true, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(containers) == 0 {
 		return nil, fmt.Errorf("project '%s' not found or has no active containers to read configuration from", projectName)
 	}
-	
+
 	configFiles := containers[0].Labels["com.docker.compose.project.config_files"]
 	if configFiles == "" {
 		return nil, fmt.Errorf("no config files label found for project '%s'", projectName)
 	}
-	
+
 	var paths []string
 	for f := range strings.SplitSeq(configFiles, ",") {
 		path := strings.TrimSpace(f)
@@ -332,7 +356,7 @@ func (m *Manager) Logs(projectName string, since string, tail string, timestamps
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Merge stderr into stdout
 	cmd.Stderr = cmd.Stdout
 
