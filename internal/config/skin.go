@@ -99,7 +99,19 @@ type SkinFrameStatus struct {
 }
 
 type SkinViews struct {
-	Table SkinViewsTable `yaml:"table"`
+	Table   SkinViewsTable   `yaml:"table"`
+	Inspect SkinViewsInspect `yaml:"inspect"`
+}
+
+// SkinViewsInspect holds the syntax colors of the inspector (JSON, YAML, env).
+// Every field is optional: a missing one is derived from the rest of the skin.
+type SkinViewsInspect struct {
+	KeyColor         string `yaml:"keyColor"`
+	StringColor      string `yaml:"stringColor"`
+	NumberColor      string `yaml:"numberColor"`
+	KeywordColor     string `yaml:"keywordColor"`
+	PunctuationColor string `yaml:"punctuationColor"`
+	CommentColor     string `yaml:"commentColor"`
 }
 
 type SkinViewsTable struct {

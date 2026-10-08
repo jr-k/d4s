@@ -294,6 +294,22 @@ D4S comes with a few built-in skins:
 
 D4S supports custom skins. Skins are stored in `$XDG_DATA_HOME/d4s/skins/<name>.yaml` (defaults to `~/.local/share/d4s/skins`).
 
+The inspector (describe, env, compose files...) takes its syntax colors from the optional `views.inspect` section:
+
+```yaml
+d4s:
+  views:
+    inspect:
+      keyColor: "#ff79c6"         # keys, variable names
+      stringColor: "#f1fa8c"      # strings
+      numberColor: "#bd93f9"      # numbers
+      keywordColor: "#ff79c6"     # true, false, null
+      punctuationColor: "#f8f8f2" # brackets, colons, commas
+      commentColor: "#6272a4"     # comments
+```
+
+Any color left out is derived from the rest of the skin and adjusted, if needed, to stay readable on `body.bgColor`.
+
 ## Remote Management (SSH Tunnel)
 
 D4S can manage remote Docker daemons over SSH. No agent or extra binary is needed on the remote host.

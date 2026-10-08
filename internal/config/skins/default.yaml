@@ -65,3 +65,11 @@ d4s:
       header:
         fgColor: *foreground
         focusColor: *orange_light
+    # Syntax colors of the inspector (JSON, YAML, env)
+    inspect:
+      keyColor: "#ff79c6"
+      stringColor: *yellow
+      numberColor: *purple
+      keywordColor: "#ff79c6"
+      punctuationColor: "#f8f8f2"
+      commentColor: "#6272a4"

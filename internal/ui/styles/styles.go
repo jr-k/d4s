@@ -76,6 +76,14 @@ var (
 	ColorPinkTag   = tcell.NewRGBColor(255, 0, 255)       // TagPink
 	ColorFilterTag = tcell.NewRGBColor(189, 147, 249)     // TagFilter
 	ColorMenuKey   = tcell.NewRGBColor(32, 144, 255)      // TagSCKey
+
+	// Syntax highlighting in the inspector (JSON, YAML, env)
+	ColorSyntaxKey         = tcell.NewRGBColor(255, 121, 198) // Pink
+	ColorSyntaxString      = tcell.NewRGBColor(241, 250, 140) // Yellow
+	ColorSyntaxNumber      = tcell.NewRGBColor(189, 147, 249) // Purple
+	ColorSyntaxKeyword     = tcell.NewRGBColor(255, 121, 198) // Pink (true, false, null)
+	ColorSyntaxPunctuation = tcell.NewRGBColor(248, 248, 242) // White
+	ColorSyntaxComment     = tcell.NewRGBColor(98, 114, 164)  // Gray-blue
 )
 
 // Tview markup-compatible color hex strings.
@@ -98,6 +106,13 @@ var (
 	TagPink   = colorToTag(ColorPinkTag)   // scope label pink
 	TagFilter = colorToTag(ColorFilterTag) // filter badge purple
 	TagSCKey  = colorToTag(ColorMenuKey)   // shortcut key blue
+
+	TagSyntaxKey         = colorToTag(ColorSyntaxKey)
+	TagSyntaxString      = colorToTag(ColorSyntaxString)
+	TagSyntaxNumber      = colorToTag(ColorSyntaxNumber)
+	TagSyntaxKeyword     = colorToTag(ColorSyntaxKeyword)
+	TagSyntaxPunctuation = colorToTag(ColorSyntaxPunctuation)
+	TagSyntaxComment     = colorToTag(ColorSyntaxComment)
 )
 
 // colorToTag converts a tcell.Color to a tview-compatible hex tag like "#rrggbb".
@@ -123,6 +138,12 @@ func refreshTags() {
 	TagPink = colorToTag(ColorPinkTag)
 	TagFilter = colorToTag(ColorFilterTag)
 	TagSCKey = colorToTag(ColorMenuKey)
+	TagSyntaxKey = colorToTag(ColorSyntaxKey)
+	TagSyntaxString = colorToTag(ColorSyntaxString)
+	TagSyntaxNumber = colorToTag(ColorSyntaxNumber)
+	TagSyntaxKeyword = colorToTag(ColorSyntaxKeyword)
+	TagSyntaxPunctuation = colorToTag(ColorSyntaxPunctuation)
+	TagSyntaxComment = colorToTag(ColorSyntaxComment)
 }
 
 const (
@@ -203,6 +224,12 @@ func InvertColors() {
 	ColorFilterTag = invertColor(ColorFilterTag)
 	ColorMenuKey = invertColor(ColorMenuKey)
 
+	// Flipping lightness leaves mid-lightness colors (e.g. pure yellow) nearly
+	// unchanged, so make sure the syntax colors still read on the new background.
+	for _, c := range syntaxColors() {
+		*c = ensureContrast(invertColor(*c), ColorBg)
+	}
+
 	// Refresh all tag strings to match the inverted colors
 	refreshTags()
 }
@@ -235,6 +262,61 @@ func mixColors(fg, bg tcell.Color, ratio float64) tcell.Color {
 		return b + int32(float64(f-b)*ratio)
 	}
 	return tcell.NewRGBColor(mix(fr, br), mix(fgG, bgG), mix(fb, bb))
+}
+
+// minSyntaxContrast is the lowest WCAG contrast ratio accepted between a
+// derived syntax color and the background (3.0 is the WCAG minimum for UI
+// components and large text).
+const minSyntaxContrast = 3.0
+
+// syntaxColors returns pointers to every inspector syntax color.
+func syntaxColors() []*tcell.Color {
+	return []*tcell.Color{
+		&ColorSyntaxKey,
+		&ColorSyntaxString,
+		&ColorSyntaxNumber,
+		&ColorSyntaxKeyword,
+		&ColorSyntaxPunctuation,
+		&ColorSyntaxComment,
+	}
+}
+
+// luminance returns the WCAG relative luminance of a color (0.0 - 1.0).
+func luminance(c tcell.Color) float64 {
+	r, g, b := c.RGB()
+	lr, lg, lb := colorful.Color{R: float64(r) / 255.0, G: float64(g) / 255.0, B: float64(b) / 255.0}.LinearRgb()
+	return 0.2126*lr + 0.7152*lg + 0.0722*lb
+}
+
+// contrastRatio returns the WCAG contrast ratio between two colors (1.0 - 21.0).
+func contrastRatio(a, b tcell.Color) float64 {
+	la, lb := luminance(a), luminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+// ensureContrast returns c unchanged when it is readable on bg. Otherwise it
+// blends c towards the foreground color, by the smallest step that reaches
+// minSyntaxContrast, so the hue is kept as much as possible.
+func ensureContrast(c, bg tcell.Color) tcell.Color {
+	if contrastRatio(c, bg) >= minSyntaxContrast {
+		return c
+	}
+	target := ColorFg
+	if contrastRatio(target, bg) < minSyntaxContrast {
+		target = tcell.NewRGBColor(0, 0, 0)
+		if white := tcell.NewRGBColor(255, 255, 255); contrastRatio(white, bg) > contrastRatio(target, bg) {
+			target = white
+		}
+	}
+	for i := 1; i < 10; i++ {
+		if mixed := mixColors(target, c, float64(i)/10); contrastRatio(mixed, bg) >= minSyntaxContrast {
+			return mixed
+		}
+	}
+	return target
 }
 
 // ApplySkin applies a skin's color definitions to all global style variables.
@@ -350,6 +432,23 @@ func ApplySkin(skin *config.Skin) {
 	if c, ok := parseHexColor(s.Views.Table.Header.FocusColor); ok {
 		ColorHeaderFocus = c
 	}
+
+	// Views > Inspect
+	// A color the skin does not set is derived from the rest of its palette,
+	// so skins written before this section existed keep working.
+	syntax := func(dst *tcell.Color, hex string, fallback tcell.Color) {
+		if c, ok := parseHexColor(hex); ok {
+			*dst = c
+			return
+		}
+		*dst = ensureContrast(fallback, ColorBg)
+	}
+	syntax(&ColorSyntaxKey, s.Views.Inspect.KeyColor, ColorCyanTag)
+	syntax(&ColorSyntaxString, s.Views.Inspect.StringColor, ColorInfo)
+	syntax(&ColorSyntaxNumber, s.Views.Inspect.NumberColor, ColorFilterTag)
+	syntax(&ColorSyntaxKeyword, s.Views.Inspect.KeywordColor, ColorAccent)
+	syntax(&ColorSyntaxPunctuation, s.Views.Inspect.PunctuationColor, ColorFg)
+	syntax(&ColorSyntaxComment, s.Views.Inspect.CommentColor, ColorDim)
 
 	// Auto-derive DarkBg status colors from status color + background
 	ColorStatusRedDarkBg = mixColors(ColorStatusRed, ColorBg, 0.15)

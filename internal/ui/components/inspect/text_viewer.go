@@ -1,12 +1,13 @@
 package inspect
 
 import (
-	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 
-	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/ui/common"
@@ -165,14 +166,57 @@ func (t *TextViewer) highlightContent(content, lang string) string {
 		lexer = "bash"
 	}
 
-	var buf bytes.Buffer
-	err := quick.Highlight(&buf, content, lexer, "terminal256", "dracula")
+	l := lexers.Get(lexer)
+	if l == nil {
+		l = lexers.Fallback
+	}
+	it, err := chroma.Coalesce(l).Tokenise(nil, content)
 	if err != nil {
 		return content
 	}
 
-	// Escape literal brackets, then convert ANSI to tview tags
-	return tview.TranslateANSI(tview.Escape(buf.String()))
+	// Write tview color tags straight from the tokens. Each run of same-colored
+	// text is escaped as a whole, so brackets in the content never form a tag.
+	var out, run strings.Builder
+	runTag := styles.TagFg
+	flush := func() {
+		if run.Len() == 0 {
+			return
+		}
+		fmt.Fprintf(&out, "[%s]%s", runTag, tview.Escape(run.String()))
+		run.Reset()
+	}
+	for token := it(); token != chroma.EOF; token = it() {
+		// Whitespace has no visible color: keep it in the current run.
+		if tag := syntaxTag(token.Type); tag != runTag && strings.TrimSpace(token.Value) != "" {
+			flush()
+			runTag = tag
+		}
+		run.WriteString(token.Value)
+	}
+	flush()
+	out.WriteString("[-]")
+
+	return out.String()
+}
+
+// syntaxTag maps a Chroma token type to the tview color tag of the active skin.
+func syntaxTag(tt chroma.TokenType) string {
+	switch {
+	case tt.InCategory(chroma.Comment):
+		return styles.TagSyntaxComment
+	case tt == chroma.NameTag, tt == chroma.NameAttribute, tt == chroma.NameVariable:
+		return styles.TagSyntaxKey
+	case tt.InSubCategory(chroma.LiteralNumber):
+		return styles.TagSyntaxNumber
+	case tt.InCategory(chroma.Literal):
+		return styles.TagSyntaxString
+	case tt.InCategory(chroma.Keyword):
+		return styles.TagSyntaxKeyword
+	case tt.InCategory(chroma.Punctuation), tt.InCategory(chroma.Operator):
+		return styles.TagSyntaxPunctuation
+	}
+	return styles.TagFg
 }
 
 func (t *TextViewer) copyToClipboard() {
