@@ -3,8 +3,11 @@ package contexts
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -311,17 +314,38 @@ func Edit(app common.AppController, v *view.ResourceView) {
 	})
 }
 
-// parseSSHURL splits "ssh://user@ip[:port][/socket/path]" into its form fields.
-func parseSSHURL(endpoint string) (user, host, socket string) {
-	rest := strings.TrimPrefix(endpoint, "ssh://")
-	if idx := strings.Index(rest, "/"); idx >= 0 {
-		socket = rest[idx:]
-		rest = rest[:idx]
+// parseSSHURL splits "ssh://user@host[:port][/socket/path]" into its form fields.
+func parseSSHURL(endpoint string) (user, host, port, socket string) {
+	parsed, err := url.Parse(endpoint)
+	if err == nil {
+		if parsed.User != nil {
+			user = parsed.User.Username()
+		}
+		host = parsed.Hostname()
+		port = parsed.Port()
+		socket = parsed.Path
 	}
-	if idx := strings.LastIndex(rest, "@"); idx >= 0 {
-		return rest[:idx], rest[idx+1:], socket
+	if port == "" {
+		port = "22"
 	}
-	return "", rest, socket
+	return user, host, port, socket
+}
+
+func buildSSHURL(user, host, port, socket string) string {
+	sshURL := fmt.Sprintf("ssh://%s@%s", user, net.JoinHostPort(host, port))
+	if socket != "" && socket != "/var/run/docker.sock" {
+		sshURL += socket
+	}
+	return sshURL
+}
+
+func validateSSHPort(port string) (string, error) {
+	port = strings.TrimSpace(port)
+	value, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || value == 0 {
+		return "", fmt.Errorf("port must be between 1 and 65535")
+	}
+	return port, nil
 }
 
 func editSSH(app common.AppController, id, currentDesc, currentEndpoint string) {
@@ -336,7 +360,7 @@ func editSSH(app common.AppController, id, currentDesc, currentEndpoint string) 
 }
 
 func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint, authType string, existing *secrets.SSHCredentials) {
-	currentUser, currentHost, currentSocket := parseSSHURL(currentEndpoint)
+	currentUser, currentHost, currentPort, currentSocket := parseSSHURL(currentEndpoint)
 	if currentSocket == "" {
 		currentSocket = "/var/run/docker.sock"
 	}
@@ -353,6 +377,7 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput, Default: currentDesc},
 		{Name: "user", Label: "SSH User", Type: dialogs.FieldTypeInput, Default: currentUser, Placeholder: "root"},
 		{Name: "host", Label: "Host", Type: dialogs.FieldTypeInput, Default: currentHost, Placeholder: "192.168.1.100"},
+		{Name: "port", Label: "SSH Port", Type: dialogs.FieldTypeInput, Default: currentPort, Placeholder: "22"},
 	}
 
 	if authType == secrets.AuthTypeKey {
@@ -381,6 +406,7 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 		description := result["description"]
 		user := strings.TrimSpace(result["user"])
 		host := strings.TrimSpace(result["host"])
+		port, portErr := validateSSHPort(result["port"])
 		socket := strings.TrimSpace(result["socket"])
 
 		if user == "" {
@@ -389,6 +415,10 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 		}
 		if host == "" {
 			app.SetFlashError("host is required")
+			return
+		}
+		if portErr != nil {
+			app.SetFlashError(portErr.Error())
 			return
 		}
 		if authType == secrets.AuthTypePassword && result["password"] == "" {
@@ -403,11 +433,7 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 			Password:   result["password"],
 		}
 
-		sshHost := fmt.Sprintf("%s@%s", user, host)
-		sshURL := fmt.Sprintf("ssh://%s", sshHost)
-		if socket != "" && socket != "/var/run/docker.sock" {
-			sshURL = fmt.Sprintf("ssh://%s%s", sshHost, socket)
-		}
+		sshURL := buildSSHURL(user, host, port, socket)
 
 		app.AppendFlashPending(fmt.Sprintf("updating context %s...", id))
 
@@ -445,6 +471,7 @@ func showSSHForm(app common.AppController, authType string) {
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput},
 		{Name: "user", Label: "SSH User", Type: dialogs.FieldTypeInput, Placeholder: "root"},
 		{Name: "host", Label: "Host", Type: dialogs.FieldTypeInput, Placeholder: "192.168.1.100"},
+		{Name: "port", Label: "SSH Port", Type: dialogs.FieldTypeInput, Default: "22", Placeholder: "22"},
 	}
 
 	if authType == secrets.AuthTypeKey {
@@ -473,6 +500,7 @@ func showSSHForm(app common.AppController, authType string) {
 		description := result["description"]
 		user := strings.TrimSpace(result["user"])
 		host := strings.TrimSpace(result["host"])
+		port, portErr := validateSSHPort(result["port"])
 		socket := strings.TrimSpace(result["socket"])
 
 		if name == "" {
@@ -487,6 +515,10 @@ func showSSHForm(app common.AppController, authType string) {
 			app.SetFlashError("host is required")
 			return
 		}
+		if portErr != nil {
+			app.SetFlashError(portErr.Error())
+			return
+		}
 		if authType == secrets.AuthTypePassword && result["password"] == "" {
 			app.SetFlashError("password is required")
 			return
@@ -499,11 +531,7 @@ func showSSHForm(app common.AppController, authType string) {
 			Password:   result["password"],
 		}
 
-		sshHost := fmt.Sprintf("%s@%s", user, host)
-		sshURL := fmt.Sprintf("ssh://%s", sshHost)
-		if socket != "" && socket != "/var/run/docker.sock" {
-			sshURL = fmt.Sprintf("ssh://%s%s", sshHost, socket)
-		}
+		sshURL := buildSSHURL(user, host, port, socket)
 
 		app.AppendFlashPending(fmt.Sprintf("creating SSH context %s (%s)...", name, sshURL))
 
