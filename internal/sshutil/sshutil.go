@@ -104,6 +104,31 @@ func sshCommand(contextName, sshHost, remoteCmd string, tty bool) *exec.Cmd {
 	return cmd
 }
 
+// CloseControlMaster terminates the multiplexed ssh master connection for
+// sshHost, if any. The next ssh invocation opens a fresh session, which is
+// required for server-side changes (group membership, authorized keys)
+// to be picked up.
+func CloseControlMaster(sshHost string) {
+	dir := controlDir()
+	if dir == "" || sshHost == "" {
+		return
+	}
+	// Strip an optional remote socket path ("user@host:port/var/run/docker.sock").
+	if i := strings.Index(sshHost, "/"); i >= 0 {
+		sshHost = sshHost[:i]
+	}
+	user, addr := ParseSSHHost(sshHost)
+	host, port := SplitHostPort(addr)
+	args := []string{
+		"-O", "exit",
+		"-o", "ControlPath=" + filepath.Join(dir, "cm-%r@%h-%p"),
+		"-l", user,
+		"-p", port,
+		host,
+	}
+	_ = exec.Command("ssh", args...).Run()
+}
+
 // ShellQuote quotes s for safe interpolation in a remote shell command.
 func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

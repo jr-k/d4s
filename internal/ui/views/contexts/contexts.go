@@ -13,6 +13,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/jr-k/d4s/internal/dao"
 	"github.com/jr-k/d4s/internal/secrets"
+	"github.com/jr-k/d4s/internal/sshutil"
 	"github.com/jr-k/d4s/internal/ui/common"
 	"github.com/jr-k/d4s/internal/ui/components/inspect"
 	"github.com/jr-k/d4s/internal/ui/components/view"
@@ -283,29 +284,36 @@ func Edit(app common.AppController, v *view.ResourceView) {
 	}
 
 	fields := []dialogs.FormField{
+		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput, Default: id},
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput, Default: currentDesc},
 		{Name: "host", Label: "Docker Host", Type: dialogs.FieldTypeInput, Default: currentEndpoint},
 	}
 
 	dialogs.ShowFormWithDescription(app, fmt.Sprintf("Edit Context: %s", id), "", fields, func(result dialogs.FormResult) {
+		name := strings.TrimSpace(result["name"])
 		description := result["description"]
 		host := result["host"]
+
+		if name == "" {
+			app.SetFlashError("name is required")
+			return
+		}
 
 		app.AppendFlashPending(fmt.Sprintf("updating context %s...", id))
 
 		app.RunInBackground(func() {
-			err := app.GetDocker().UpdateContext(id, description, host)
 			isCurrent := app.GetDocker().ContextName == id
+			err := app.GetDocker().UpdateAndRenameContext(id, name, description, host)
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
 					app.AppendFlashError(fmt.Sprintf("failed to update context: %v", err))
 					app.RefreshCurrentView()
 					return
 				}
-				app.AppendFlashSuccess(fmt.Sprintf("context %s updated", id))
+				app.AppendFlashSuccess(fmt.Sprintf("context %s updated", name))
 				if isCurrent {
 					// Rebuild the client so the new endpoint applies immediately
-					app.ReloadContext(id)
+					app.ReloadContext(name)
 				} else {
 					app.RefreshCurrentView()
 				}
@@ -333,7 +341,7 @@ func parseSSHURL(endpoint string) (user, host, port, socket string) {
 
 func buildSSHURL(user, host, port, socket string) string {
 	sshURL := fmt.Sprintf("ssh://%s@%s", user, net.JoinHostPort(host, port))
-	if socket != "" && socket != "/var/run/docker.sock" {
+	if socket != "" {
 		sshURL += socket
 	}
 	return sshURL
@@ -374,6 +382,7 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 	}
 
 	fields := []dialogs.FormField{
+		{Name: "name", Label: "Name", Type: dialogs.FieldTypeInput, Default: id},
 		{Name: "description", Label: "Description", Type: dialogs.FieldTypeInput, Default: currentDesc},
 		{Name: "user", Label: "SSH User", Type: dialogs.FieldTypeInput, Default: currentUser, Placeholder: "root"},
 		{Name: "host", Label: "Host", Type: dialogs.FieldTypeInput, Default: currentHost, Placeholder: "192.168.1.100"},
@@ -403,12 +412,17 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 	)
 
 	dialogs.ShowFormWithDescription(app, fmt.Sprintf("Edit Context: %s", id), "Updates the SSH context and its credentials", fields, func(result dialogs.FormResult) {
+		name := strings.TrimSpace(result["name"])
 		description := result["description"]
 		user := strings.TrimSpace(result["user"])
 		host := strings.TrimSpace(result["host"])
 		port, portErr := validateSSHPort(result["port"])
 		socket := strings.TrimSpace(result["socket"])
 
+		if name == "" {
+			app.SetFlashError("name is required")
+			return
+		}
 		if user == "" {
 			app.SetFlashError("SSH user is required")
 			return
@@ -438,25 +452,31 @@ func showSSHEditForm(app common.AppController, id, currentDesc, currentEndpoint,
 		app.AppendFlashPending(fmt.Sprintf("updating context %s...", id))
 
 		app.RunInBackground(func() {
-			err := app.GetDocker().UpdateContext(id, description, sshURL)
+			isCurrent := app.GetDocker().ContextName == id
+			err := app.GetDocker().UpdateAndRenameContext(id, name, description, sshURL)
 			if err == nil {
-				if kerr := secrets.Save(id, creds); kerr != nil {
+				if kerr := secrets.Save(name, creds); kerr != nil {
 					app.GetTviewApp().QueueUpdateDraw(func() {
 						app.AppendFlashError(fmt.Sprintf("context updated but credentials not saved: %v", kerr))
 					})
+				} else if name != id {
+					secrets.Delete(id)
 				}
+				// Drop the multiplexed ssh session so the next connection
+				// re-authenticates and picks up server-side changes.
+				sshutil.CloseControlMaster(strings.TrimPrefix(currentEndpoint, "ssh://"))
+				sshutil.CloseControlMaster(strings.TrimPrefix(sshURL, "ssh://"))
 			}
-			isCurrent := app.GetDocker().ContextName == id
 			app.GetTviewApp().QueueUpdateDraw(func() {
 				if err != nil {
 					app.AppendFlashError(fmt.Sprintf("failed to update context: %v", err))
 					app.RefreshCurrentView()
 					return
 				}
-				app.AppendFlashSuccess(fmt.Sprintf("SSH context '%s' updated", id))
+				app.AppendFlashSuccess(fmt.Sprintf("SSH context '%s' updated", name))
 				if isCurrent {
 					// Rebuild the client so the new endpoint/credentials apply immediately
-					app.ReloadContext(id)
+					app.ReloadContext(name)
 				} else {
 					app.RefreshCurrentView()
 				}
