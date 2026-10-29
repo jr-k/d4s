@@ -28,11 +28,15 @@ func ControlMasterArgs() []string {
 	}
 }
 
-// ParseSSHHost splits "user@host[:port][/]" into user and "host:port".
+// ParseSSHHost splits "user@host[:port][/remote/socket/path]" into user
+// and "host:port". Any remote path (docker socket) is dropped.
 // User defaults to root, port to 22.
 func ParseSSHHost(host string) (user, addr string) {
 	user = "root"
-	addr = strings.TrimSuffix(host, "/")
+	addr = host
+	if idx := strings.Index(addr, "/"); idx >= 0 {
+		addr = addr[:idx]
+	}
 
 	if at := strings.Index(addr, "@"); at >= 0 {
 		user = addr[:at]
@@ -112,10 +116,6 @@ func CloseControlMaster(sshHost string) {
 	dir := controlDir()
 	if dir == "" || sshHost == "" {
 		return
-	}
-	// Strip an optional remote socket path ("user@host:port/var/run/docker.sock").
-	if i := strings.Index(sshHost, "/"); i >= 0 {
-		sshHost = sshHost[:i]
 	}
 	user, addr := ParseSSHHost(sshHost)
 	host, port := SplitHostPort(addr)
