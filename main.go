@@ -58,6 +58,10 @@ func main() {
 	flag.StringVar(&contextName, "context", "", "Docker context to use")
 	flag.StringVar(&contextName, "c", "", "Docker context to use (shorthand)")
 
+	// Config flag
+	var configPath string
+	flag.StringVar(&configPath, "config", "", "Configuration file to use")
+
 	// Skin flag
 	var skinName string
 	flag.StringVar(&skinName, "skin", "", "Skin to use (overrides config)")
@@ -67,6 +71,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\nOptions:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  -v, --version          Print version and exit\n")
 		fmt.Fprintf(os.Stderr, "  -c, --context string   Docker context to use\n")
+		fmt.Fprintf(os.Stderr, "      --config string    Configuration file to use\n")
 		fmt.Fprintf(os.Stderr, "  -s, --skin string      Skin to use (overrides config)\n")
 	}
 
@@ -105,7 +110,17 @@ func main() {
 		return
 	}
 
-	cfg := config.Load()
+	var cfg *config.Config
+	if configPath == "" {
+		cfg = config.Load()
+	} else {
+		var err error
+		cfg, err = config.LoadFile(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "d4s: configuration error: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	// CLI skin flag has max precedence
 	if skinName != "" {

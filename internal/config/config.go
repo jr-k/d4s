@@ -11,7 +11,8 @@ import (
 )
 
 type Config struct {
-	D4S D4SConfig `yaml:"d4s"`
+	D4S        D4SConfig `yaml:"d4s"`
+	sourcePath string
 }
 
 type D4SConfig struct {
@@ -179,11 +180,24 @@ func ensureConfigDirs() {
 	_ = os.MkdirAll(filepath.Join(dir, "skins"), 0o755)
 }
 
+func parse(data []byte, configPath string) (*Config, error) {
+	cfg := DefaultConfig()
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parse config %q: %w", configPath, err)
+	}
+
+	// Enforce minimum refresh rate
+	if cfg.D4S.RefreshRate < 2.0 && cfg.D4S.RefreshRate > 0 {
+		cfg.D4S.RefreshRate = 2.0
+	}
+
+	return cfg, nil
+}
+
 // Load reads the config from $XDG_CONFIG_HOME/d4s/config.yaml.
 // If the file doesn't exist or can't be parsed, defaults are returned.
 func Load() *Config {
 	cfg := DefaultConfig()
-
 	dir := configDir()
 	if dir == "" {
 		return cfg
@@ -202,25 +216,48 @@ func Load() *Config {
 		}
 	}
 
-	// Parse into a fresh config so we can detect which fields were explicitly set
-	parsed := DefaultConfig()
-	if err := yaml.Unmarshal(data, parsed); err != nil {
-		fmt.Fprintf(os.Stderr, "d4s: warning: failed to parse %s: %v\n", configPath, err)
+	loaded, err := parse(data, configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "d4s: warning: %v\n", err)
 		return cfg
 	}
 
-	// Enforce minimum refresh rate
-	if parsed.D4S.RefreshRate < 2.0 && parsed.D4S.RefreshRate > 0 {
-		parsed.D4S.RefreshRate = 2.0
-	}
-
-	return parsed
+	return loaded
 }
 
-// Save writes the config back to $XDG_CONFIG_HOME/d4s/config.yaml.
+// LoadFile reads exactly configPath and returns an error if it cannot be read or parsed.
+func LoadFile(configPath string) (*Config, error) {
+	if configPath == "" {
+		return nil, errors.New("config path is empty")
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config %q: %w", configPath, err)
+	}
+
+	cfg, err := parse(data, configPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg.sourcePath = configPath
+	return cfg, nil
+}
+
+// Save writes the config back to its explicit source file, or to the default
+// $XDG_CONFIG_HOME/d4s/config.yaml path when standard discovery was used.
 func Save(cfg *Config) error {
 	if cfg == nil {
 		return errors.New("nil config")
+	}
+
+	configPath := cfg.sourcePath
+	if configPath != "" {
+		data, err := yaml.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(configPath, data, 0o644)
 	}
 
 	dir := configDir()
@@ -235,6 +272,6 @@ func Save(cfg *Config) error {
 		return err
 	}
 
-	configPath := filepath.Join(dir, "config.yaml")
+	configPath = filepath.Join(dir, "config.yaml")
 	return os.WriteFile(configPath, data, 0o644)
 }
