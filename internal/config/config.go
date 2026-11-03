@@ -12,6 +12,10 @@ import (
 
 type Config struct {
 	D4S D4SConfig `yaml:"d4s"`
+
+	// filePath is set only for explicitly selected files, so Save preserves
+	// the default discovery behavior for configurations loaded with Load.
+	filePath string
 }
 
 type D4SConfig struct {
@@ -202,39 +206,71 @@ func Load() *Config {
 		}
 	}
 
-	// Parse into a fresh config so we can detect which fields were explicitly set
-	parsed := DefaultConfig()
-	if err := yaml.Unmarshal(data, parsed); err != nil {
+	parsed, err := parseConfig(data)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "d4s: warning: failed to parse %s: %v\n", configPath, err)
 		return cfg
-	}
-
-	// Enforce minimum refresh rate
-	if parsed.D4S.RefreshRate < 2.0 && parsed.D4S.RefreshRate > 0 {
-		parsed.D4S.RefreshRate = 2.0
 	}
 
 	return parsed
 }
 
-// Save writes the config back to $XDG_CONFIG_HOME/d4s/config.yaml.
+// LoadFile reads exactly the specified file, returning an error if it cannot be
+// read or parsed. Save writes subsequent changes back to the same file.
+func LoadFile(path string) (*Config, error) {
+	if path == "" {
+		return nil, errors.New("configuration file path cannot be empty")
+	}
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve configuration file %q: %w", path, err)
+	}
+	data, err := os.ReadFile(absolutePath)
+	if err != nil {
+		return nil, fmt.Errorf("read configuration file %q: %w", path, err)
+	}
+	cfg, err := parseConfig(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse configuration file %q: %w", path, err)
+	}
+	cfg.filePath = absolutePath
+	return cfg, nil
+}
+
+func parseConfig(data []byte) (*Config, error) {
+	cfg := DefaultConfig()
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	// Enforce minimum refresh rate.
+	if cfg.D4S.RefreshRate < 2.0 && cfg.D4S.RefreshRate > 0 {
+		cfg.D4S.RefreshRate = 2.0
+	}
+	return cfg, nil
+}
+
+// Save writes the config back to the explicitly selected file, or to
+// $XDG_CONFIG_HOME/d4s/config.yaml when default discovery was used.
 func Save(cfg *Config) error {
 	if cfg == nil {
 		return errors.New("nil config")
 	}
 
-	dir := configDir()
-	if dir == "" {
-		return errors.New("unable to determine config directory")
+	configPath := cfg.filePath
+	if configPath == "" {
+		dir := configDir()
+		if dir == "" {
+			return errors.New("unable to determine config directory")
+		}
+		ensureConfigDirs()
+		configPath = filepath.Join(dir, "config.yaml")
 	}
-
-	ensureConfigDirs()
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(dir, "config.yaml")
 	return os.WriteFile(configPath, data, 0o644)
 }

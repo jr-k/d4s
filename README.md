@@ -195,6 +195,16 @@ d4s --context my-remote-ctx
 
 D4S uses a YAML configuration file located at `$XDG_CONFIG_HOME/d4s/config.yaml` (defaults to `~/.config/d4s/config.yaml`).
 
+Use `--config` to select a different file independently of the Docker context:
+
+```sh
+d4s --context hbx-prod --config ~/.config/d4s/prod.yaml
+```
+
+When `--config` is supplied, D4S reads only that file and exits with an error if it cannot be read or parsed. Configuration changes made in the app (such as selecting a default context) are saved back to that file. The selected configuration remains active when switching Docker contexts inside the app. Skins and exported logs still use their normal directories; `--skin` still overrides the configured skin.
+
+Without `--config`, existing discovery is unchanged: D4S tries `config.yaml`, falls back to `config.yml` if it cannot read `config.yaml`, and uses defaults if neither can be read or the selected file cannot be parsed.
+
 ### Context Selection Precedence
 
 When deciding which Docker context to use, D4S applies the following precedence:
